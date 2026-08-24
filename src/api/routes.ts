@@ -15,7 +15,7 @@ import type { Principal } from "./authz.ts";
 import type { ApiRequest, ApiResponse, ApiHandler } from "./http-types.ts";
 import { adminRoutes } from "./admin-routes.ts";
 import { canReadCase, canWriteCase, canTransitionCase } from "./authz.ts";
-import { getCaseByDiaryNumber, getCaseHistory, getPublishedCaseByDiaryNumber, getPublishedHistory, listCustomerCases, searchPublishedCases } from "../core/queries.ts";
+import { getCaseByDiaryNumber, getCaseHistory, getPublishedCaseByDiaryNumber, getPublishedHistory, listCustomerCases, searchPublishedCases, type PublishedSearchOptions } from "../core/queries.ts";
 import { authorizedCases, assignedCases, unassignedOptedInCases, pendingToApprove } from "../core/worker-queries.ts";
 import { createCase } from "../domain/cases.ts";
 import { appendOperation, type Direction } from "../domain/operations.ts";
@@ -68,10 +68,13 @@ const postCase: ApiHandler = async (platform, req) => {
   if (!(await platform.shared.get("SELECT 1 AS ok FROM categories WHERE display_code = ? AND active = 1", [category]))) {
     return { status: 400, body: { error: "unknown category" } };
   }
-  // The lifecycle start is registry configuration, never request data. Ignore
-  // the legacy property entirely so stale clients cannot influence the state
-  // and do not fail merely because they still send it.
+  // The lifecycle start is registry configuration, never request data. Accept
+  // the legacy property only when it repeats that configured value: stale
+  // clients keep working, while callers cannot select another lifecycle state.
   const initialState = h.def.initialState;
+  if (b.initialState !== undefined && String(b.initialState) !== initialState) {
+    return { status: 400, body: { error: "initialState is server controlled" } };
+  }
 
   // Authorization for creation: workers need write on the category; customers
   // may create their own case; tokens need POST cases within scope.
@@ -195,9 +198,42 @@ const postTransition: ApiHandler = async (platform, req) => {
 const getPublished: ApiHandler = async (platform, req) => {
   const h = platform.registry(req.params.registry!);
   if (!h) return { status: 404, body: { error: "unknown registry" } };
-  const prefix = req.query.get("category") ?? undefined;
-  return { status: 200, body: { cases: await searchPublishedCases(h.db, prefix) } };
+  const options = publishedSearchOptions(req.query);
+  if ("error" in options) return { status: 400, body: { error: options.error } };
+  return { status: 200, body: { cases: await searchPublishedCases(h.db, options) } };
 };
+
+const getPublishedAcrossRegistries: ApiHandler = async (platform, req) => {
+  const options = publishedSearchOptions(req.query);
+  if ("error" in options) return { status: 400, body: { error: options.error } };
+  const requestedRegistry = req.query.get("registry");
+  if (requestedRegistry && !platform.registry(requestedRegistry)) return { status: 404, body: { error: "unknown registry" } };
+  const visible = platform.allRegistries().filter((h) =>
+    (!requestedRegistry || h.def.registryId === requestedRegistry) &&
+    (req.principal.kind !== "token" || h.def.registryId === req.principal.scope.registryId));
+  const pages = await Promise.all(visible.map(async (h) => ({
+    registryId: h.def.registryId,
+    cases: await searchPublishedCases(h.db, options),
+  })));
+  const cases = pages.flatMap((page) => page.cases.map((publishedCase) => ({ registryId: page.registryId, ...publishedCase })))
+    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt) || a.registryId.localeCompare(b.registryId) || a.diaryNumber.localeCompare(b.diaryNumber))
+    .slice(0, options.limit ?? 50);
+  return { status: 200, body: { cases } };
+};
+
+function publishedSearchOptions(query: URLSearchParams): PublishedSearchOptions | { error: string } {
+  const q = query.get("q")?.trim() ?? "";
+  if (q && q.length < 3) return { error: "q must be at least 3 characters" };
+  if (q.length > 200) return { error: "q must be at most 200 characters" };
+  const rawLimit = query.get("limit");
+  const limit = rawLimit === null ? 50 : Number(rawLimit);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) return { error: "limit must be an integer from 1 to 50" };
+  return {
+    ...(q ? { query: q } : {}),
+    ...(query.get("category") ? { categoryPrefix: query.get("category")! } : {}),
+    limit,
+  };
+}
 
 const getMyCases: ApiHandler = async (platform, req) => {
   const h = platform.registry(req.params.registry!);
@@ -235,8 +271,9 @@ const postPendingDecision: ApiHandler = async (platform, req) => {
 // ---- registry list + meta (for the UI) -------------------------------------
 
 const getRegistries: ApiHandler = async (platform, req) => {
-  const visible = req.principal.kind === "token"
-    ? platform.allRegistries().filter((h) => h.def.registryId === req.principal.scope.registryId)
+  const tokenRegistry = req.principal.kind === "token" ? req.principal.scope.registryId : undefined;
+  const visible = tokenRegistry
+    ? platform.allRegistries().filter((h) => h.def.registryId === tokenRegistry)
     : platform.allRegistries();
   const list = visible.map((h) => ({ registryId: h.def.registryId, name: h.def.name, diaryCode: h.def.diary.registryCode }));
   return { status: 200, body: { registries: list } };
@@ -415,6 +452,7 @@ function serializeCases(cases: ReadonlyArray<{ caseKey: bigint; diaryNumber: str
 
 const coreRoutes: readonly Route<ApiHandler>[] = [
   defineRoute("GET", "/api/registries", getRegistries),
+  defineRoute("GET", "/api/published/search", getPublishedAcrossRegistries),
   defineRoute("GET", "/api/registries/:registry/meta", getMeta),
   defineRoute("GET", "/api/registries/:registry/published", getPublished),
   defineRoute("GET", "/api/registries/:registry/my-cases", getMyCases),

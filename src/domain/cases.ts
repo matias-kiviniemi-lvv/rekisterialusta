@@ -121,7 +121,7 @@ export async function createCase(db: DbAdapter, input: CreateCaseInput, now: str
 
     const correlationId = input.correlationId ?? `case:${diaryNumber}`;
     await appendAudit(tx, {
-      actorKind: input.actorKind, actorId: input.actorId, action: "case.create", targetType: "case",
+      actorKind: input.actorKind, ...(input.actorId !== undefined ? { actorId: input.actorId } : {}), action: "case.create", targetType: "case",
       targetId: String(caseKey), correlationId, details: { diaryNumber, category: input.category },
     }, now);
     await appendOutbox(tx, {
