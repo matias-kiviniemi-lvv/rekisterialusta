@@ -125,10 +125,24 @@ src/
   api/      admin-routes.ts          management (admin-only) REST routes
             http-types.ts            shared handler types (breaks the routes↔admin cycle)
   bootstrap.ts                       compose root: migrate + apply config + Platform (multi-DB)
+  logging/logger.ts                  replaceable log sink + customer-data-safe logging policy
 test/       spine, categories, diary, api, forms, rules, http-smoke,
             multi-registry, admin, config-promote, exports (42 cases)
 scripts/    demo.ts, api-demo.ts, phase5-demo.ts, serve.ts, migrate.ts
 ```
+
+### Logging and customer data
+
+Application logging goes through `src/logging/logger.ts`. It currently defaults
+to `console.log`/`console.error`; an external service can be integrated later by
+implementing `LogSink` and passing it to `createLogger`.
+
+Customer data must be placed in the separate `customerData` field, not in log
+messages or operational `metadata`. Customer data is **omitted by default**. If
+an operational need requires correlation, set `customerDataHandling: "redact"`;
+values will then contain only a prefix (configured with
+`redactionPrefixLength`, default `0`) followed by `[REDACTED]`. Customer data is
+never logged in full.
 
 ## Production notes (next phases)
 
