@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Registry Platform — Console</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">▤</span>
+      <div>
+        <div class="brand-title">Registry Platform</div>
+        <div class="brand-sub">Rekisterialusta · MVP console</div>
+      </div>
+    </div>
+    <div class="context">
+      <label>Acting as
+        <select id="identity"></select>
+      </label>
+      <label>Registry
+        <select id="registry"></select>
+      </label>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="customer" class="active">Customer portal</button>
+    <button data-tab="worker">Case-worker portal</button>
+    <button data-tab="publishing">Publishing portal</button>
+    <button data-tab="management">Management portal</button>
+  </nav>
+
+  <main id="view"></main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <footer class="foot">
+    Stub identity (dev) · data is in-memory and resets on server restart ·
+    switch "Acting as" to see the two auth systems and admin gating in action.
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

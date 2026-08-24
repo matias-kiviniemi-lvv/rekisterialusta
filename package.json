@@ -1,0 +1,37 @@
+{
+  "name": "rekisterialusta",
+  "version": "0.5.0",
+  "private": true,
+  "description": "Registry Platform — multi-registry public-sector case platform (Phases 0–3, 5)",
+  "type": "module",
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "demo": "node --experimental-strip-types scripts/demo.ts",
+    "api-demo": "node --experimental-strip-types scripts/api-demo.ts",
+    "phase5-demo": "node --experimental-strip-types scripts/phase5-demo.ts",
+    "serve": "node --experimental-strip-types scripts/serve.ts",
+    "serve:public": "TRUST_ZONE=public node --experimental-strip-types scripts/serve.ts",
+    "serve:worker": "TRUST_ZONE=worker node --experimental-strip-types scripts/serve.ts",
+    "serve:integration": "TRUST_ZONE=integration node --experimental-strip-types scripts/serve.ts",
+    "dev": "node --env-file=.env --experimental-strip-types scripts/serve.ts",
+    "migrate": "node --experimental-strip-types scripts/migrate.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "@types/mssql": "^9.1.5",
+    "typescript": "5.7"
+  },
+  "optionalDependencies": {
+    "mssql": "^11.0.1"
+  },
+  "comments": {
+    "runtime": "Node-first, Bun-compatible (D-11). No build step: native TypeScript type-stripping runs .ts directly.",
+    "database": "Dev/test/offline (Env 1) use the built-in node:sqlite adapter — ZERO runtime dependencies. SQL Server (Envs 2/3) uses the OPTIONAL `mssql` dependency, loaded lazily by the adapter factory only when DB_DIALECT=sqlserver. Env 1 installs with --omit=optional (or offline, no install) and never needs mssql.",
+    "auth": "Three run modes selected purely by env (SQLSERVER_AUTH): mode 1 = SQLite sandbox (no SQL Server); mode 2 = local SQL Server username/password (`sql`); mode 3 = Azure SQL passwordless RBAC via managed identity (`managed-identity`). Mode 3 uses tedious's built-in MSI auth bundled in `mssql` — NO new dependency (@azure/identity is intentionally not added), so Env 1 stays zero-dep.",
+    "dependencies": "None REQUIRED at runtime. mssql is optional (SQL Server only). TypeScript + @types are dev-only."
+  }
+}

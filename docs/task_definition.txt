@@ -1,0 +1,83 @@
+I want to create a public sector registry platform that can collect, store and manage data for multiple legal 
+registries within same technical platform.
+
+Main functionalities:
+- Can utilize multiple databases over one or more database servers
+- Each registry has main datamodel: cases and operations on those cases
+- cases have a state machine with a managed set of allowed changes 
+- forms platform that allows users to manage forms and customers to submit them
+- customer portal where they can see their open and closed cases and available forms
+- case worker portal that shows open cases assigned to them, history, cases in authorized categories (where worker has opted in) without assignees 
+- publishing portal that allows search and display of published cases and their operations
+- management portal where new fields and states can be managed 
+- REST-api with token based auth on method and category
+- rule engine that allows actions to execute on state change if conditions apply
+- scheduled exports of all registries as csv
+
+Preliminary data model on each registry
+- cases
+    - caseId 
+    - created
+    - modified
+    - category (hierarchical id with 1-4 levels like 105.04.03)
+    - state
+    - is published
+    - registry specific fields
+- operations
+    - caseId
+    - operationId
+    - created
+    - modified
+    - direction (incoming, outgoing, internal)
+    - type, subtype
+    - properties (serialized JSON data)
+    - comment
+- states
+    - id
+    - name
+    - description
+    - is open
+    - is waiting for customer
+- forms on cases
+    - caseId (create new if empty)
+    - is worker or customer form
+    - subset of the registry fields that will be updated
+    - whether update requires approval by case worker
+- forms on operations
+    - caseId
+    - is worker or customer form
+    - file attachments
+    - JSON-schema on property-payload defining what properties user is asked to fill and what their type is (including mandatory/nullable or not)
+- handlers
+    - caseId
+    - workerId
+    - role
+
+Shared data model
+    - worker registry
+    - customer registry
+    - category registry
+
+Design decisions to validate
+- Node.js based for both cloud and local operations
+- TypeScript starting with node type stripping but probably moving to bun at some point (needs IT approval)
+- All apps as stateless functions unless there is a technical need to maintain state
+- Azure for Sql Server elastic pools and flex functions for easy, cost efficient scaling (AWS other option)
+- Use https://github.com/pragmatta/oino-ts for database APIs and blob storage as stateful app which caches the connections
+- cases have static fields because "what is collected" should be based on the law
+
+Design choices to make 
+- public case id will be a diary number like REGISTRY/YEAR/NUMBER and we need to decide if that will be the actual id of a case or if there is an internal id used as private key and if those are numeric or guid
+- there will be separate auth systems for workers and customers. customers have equal rights (own cases and create new), workers are authorized on category-level
+- there will be multiple integrations to external systems and we need flexibility in handling synchronous, asynchronous and incoming requests, possibly with a message queue
+- are worker and customer registries actual registries on the platform or just shared internal tables
+- internal data model needs a migration model from dev to test to prod
+- what rules to maintain in DBMS and what in code
+- how to handle blob storage
+- how to manage database configuration
+- how to manage worker authorizations. in general workers are authorized on category with higher level category including all subcategories (e.g. just 105 would authorize any 105.x.y.z)
+- how operation types and subtypes are managed (could be just strings at start)
+- set of actions likely a static hardcoded (e.g. send data to integration) but some could be more general purpose with parameters (set state, update values, create operation)
+- what is a proper level of testing (at least API-endpoints, authorization, correctness of customer data input/output) and how to implement that
+
+Analyze and create product specification, architecture specification and a project plan with implementable phases. Ask if unsure.
