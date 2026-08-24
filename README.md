@@ -10,6 +10,9 @@ in `04-decision-record.md`. Real, runnable, tested — not a mock. No build step
 no external services, no dependencies at runtime (Node 22 native type-stripping
 + built-in `node:sqlite`).
 
+The implemented product behavior is summarized as a numbered, role-oriented
+set of [`user stories`](docs/USER_STORIES.md), grouped by portal or component.
+
 ## What's here
 
 - **Phase 0** — walking skeleton, stateless handler pattern.
