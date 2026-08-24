@@ -232,19 +232,22 @@ async function renderWorker(v) {
 
 // ---- Publishing portal -----------------------------------------------------
 
-async function renderPublishing(v) {
+async function renderPublishing(v, newSearch = false) {
   const m = meta();
   const keepCat = $("#pub_cat") ? $("#pub_cat").value : "";
   const keepQuery = $("#pub_query") ? $("#pub_query").value : "";
   const keepScope = $("#pub_scope") ? $("#pub_scope").value : "registry";
+  if (newSearch) state.open.publishing = null;
   v.innerHTML = "";
   v.append(h("h2", null, "Publishing portal"), h("p", { class: "sub" }, "Literal substring search across published case fields and published operation content — nothing private is searched."));
   const queryInput = h("input", { id: "pub_query", placeholder: "at least 3 characters", style: "min-width:280px", value: keepQuery });
   const catInput = h("input", { id: "pub_cat", placeholder: "category prefix e.g. 105", style: "max-width:220px", value: keepCat });
   const scope = h("select", { id: "pub_scope" }, h("option", { value: "registry" }, "Current registry"), h("option", { value: "all" }, "All registries"));
   scope.value = keepScope;
-  v.append(h("div", { class: "inline", style: "margin-bottom:14px" }, queryInput, catInput, scope,
-    h("button", { class: "btn", onclick: () => renderPublishing(v) }, "Search")));
+  v.append(h("form", {
+    class: "inline", style: "margin-bottom:14px",
+    onsubmit: (event) => { event.preventDefault(); renderPublishing(v, true); },
+  }, queryInput, catInput, scope, h("button", { class: "btn", type: "submit" }, "Search")));
   const card = h("div", { class: "card" }, h("h3", null, "Published cases"));
   v.append(card);
   const params = new URLSearchParams();

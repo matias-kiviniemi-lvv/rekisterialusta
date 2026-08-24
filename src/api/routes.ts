@@ -68,10 +68,13 @@ const postCase: ApiHandler = async (platform, req) => {
   if (!(await platform.shared.get("SELECT 1 AS ok FROM categories WHERE display_code = ? AND active = 1", [category]))) {
     return { status: 400, body: { error: "unknown category" } };
   }
-  // The lifecycle start is registry configuration, never request data. Ignore
-  // the legacy property entirely so stale clients cannot influence the state
-  // and do not fail merely because they still send it.
+  // The lifecycle start is registry configuration, never request data. Accept
+  // the legacy property only when it repeats that configured value: stale
+  // clients keep working, while callers cannot select another lifecycle state.
   const initialState = h.def.initialState;
+  if (b.initialState !== undefined && String(b.initialState) !== initialState) {
+    return { status: 400, body: { error: "initialState is server controlled" } };
+  }
 
   // Authorization for creation: workers need write on the category; customers
   // may create their own case; tokens need POST cases within scope.
