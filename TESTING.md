@@ -99,6 +99,32 @@ node --test --experimental-strip-types test/multi-registry.test.ts
 Test files live in `test/` and are named by area (`spine`, `api`, `forms`,
 `rules`, `admin`, `multi-registry`, `config-promote`, `exports`, `http-smoke`, …).
 
+### User-story state-transition tests
+
+`test/user-story-state.test.ts` is the higher-level data-integrity layer. Each
+test starts a fresh platform with fixed time and controlled master/config data,
+creates its own case through the public API, performs the same commands as a
+portal user, and compares a stable projection of persisted customer state after
+each important step. The projection includes the case value and version,
+append-only operations, and pending approval records, while intentionally
+excluding generated database keys and event UUIDs.
+
+Add scenarios as a table of **arrange → command → expected projection**. Keep
+one fresh database per test; never make scenarios depend on execution order or
+share a mutable golden database. Assert intermediate state as well as the final
+state, especially when a command must *not* mutate customer data. Approval and
+no-approval forms are the baseline examples:
+
+```
+node --test --experimental-strip-types test/user-story-state.test.ts
+```
+
+For destructive or multi-write operations, extend the projection with the
+relevant tables and include a failure-injection scenario that verifies the
+whole projection is unchanged after rollback. Prefer semantic inline expected
+objects over raw database dumps: review diffs then describe actual business
+state changes and remain stable across database implementations.
+
 ---
 
 ## 3. Narrated command-line walk-throughs (no browser)
