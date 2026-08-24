@@ -27,6 +27,12 @@ export interface PublishedCaseView {
   publishedAt: string;
 }
 
+export interface PublishedSearchOptions {
+  readonly query?: string;
+  readonly categoryPrefix?: string;
+  readonly limit?: number;
+}
+
 interface PublishedCaseRecord extends PublishedCaseView {
   caseKey: bigint;
 }
@@ -92,21 +98,68 @@ export async function listCustomerCases(registryDb: Db, customerId: string): Pro
   return rows.map(toCaseView);
 }
 
-/** Publishing portal: only published cases (§5.7). Safe-by-default. */
-export async function searchPublishedCases(registryDb: Db, categoryPrefix?: string): Promise<PublishedCaseView[]> {
-  const rows = categoryPrefix
+/**
+ * Publishing portal: scan only the explicit public projection (§5.7).
+ * Matching is a normalized literal substring test over public case metadata,
+ * public field values, and explicitly published operation content.
+ */
+export async function searchPublishedCases(registryDb: Db, options: PublishedSearchOptions = {}): Promise<PublishedCaseView[]> {
+  const rows = options.categoryPrefix
     ? await registryDb.all(
         `SELECT p.diary_number, p.category, p.state, p.fields_json, p.published_at
            FROM published_cases p
           WHERE p.category LIKE ? ORDER BY p.published_at DESC`,
-        [categoryPrefix + "%"],
+        [options.categoryPrefix + "%"],
       )
     : await registryDb.all(
         `SELECT p.diary_number, p.category, p.state, p.fields_json, p.published_at
            FROM published_cases p
           ORDER BY p.published_at DESC`,
       );
-  return rows.map(toPublishedCaseView);
+  const query = options.query ? normalizeSearchText(options.query) : "";
+  const operationsByCase = new Map<string, string[]>();
+  if (query) {
+    const operations = await registryDb.all(
+      `SELECT pc.diary_number, po.type, po.subtype, po.properties, po.comment
+         FROM published_operations po
+         JOIN published_cases pc ON pc.case_key = po.case_key
+        ORDER BY po.operation_id`,
+    );
+    for (const operation of operations) {
+      const diaryNumber = String(operation.diary_number);
+      const values = operationsByCase.get(diaryNumber) ?? [];
+      values.push(...searchableScalars(operation.type), ...searchableScalars(operation.subtype),
+        ...searchableScalars(parseJson(operation.properties)), ...searchableScalars(operation.comment));
+      operationsByCase.set(diaryNumber, values);
+    }
+  }
+
+  const matches: PublishedCaseView[] = [];
+  for (const row of rows) {
+    const view = toPublishedCaseView(row);
+    const values = [view.diaryNumber, view.category, view.state, ...searchableScalars(view.fields),
+      ...(operationsByCase.get(view.diaryNumber) ?? [])];
+    if (!query || values.some((value) => normalizeSearchText(value).includes(query))) matches.push(view);
+    if (matches.length >= (options.limit ?? 50)) break;
+  }
+  return matches;
+}
+
+function normalizeSearchText(value: string): string {
+  return value.normalize("NFKC").toLocaleLowerCase("en");
+}
+
+function searchableScalars(value: unknown): string[] {
+  if (value === null || value === undefined) return [];
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return [String(value)];
+  if (Array.isArray(value)) return value.flatMap(searchableScalars);
+  if (typeof value === "object") return Object.values(value).flatMap(searchableScalars);
+  return [];
+}
+
+function parseJson(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try { return JSON.parse(value); } catch { return value; }
 }
 
 export async function getPublishedCaseByDiaryNumber(registryDb: Db, diaryNumber: string): Promise<PublishedCaseRecord | undefined> {

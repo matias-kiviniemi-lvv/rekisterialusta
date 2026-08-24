@@ -235,17 +235,34 @@ async function renderWorker(v) {
 async function renderPublishing(v) {
   const m = meta();
   const keepCat = $("#pub_cat") ? $("#pub_cat").value : "";
+  const keepQuery = $("#pub_query") ? $("#pub_query").value : "";
+  const keepScope = $("#pub_scope") ? $("#pub_scope").value : "registry";
   v.innerHTML = "";
-  v.append(h("h2", null, "Publishing portal"), h("p", { class: "sub" }, "Public search of published cases only — nothing private is ever shown."));
+  v.append(h("h2", null, "Publishing portal"), h("p", { class: "sub" }, "Literal substring search across published case fields and published operation content — nothing private is searched."));
+  const queryInput = h("input", { id: "pub_query", placeholder: "at least 3 characters", style: "min-width:280px", value: keepQuery });
   const catInput = h("input", { id: "pub_cat", placeholder: "category prefix e.g. 105", style: "max-width:220px", value: keepCat });
-  v.append(h("div", { class: "inline", style: "margin-bottom:14px" }, catInput,
+  const scope = h("select", { id: "pub_scope" }, h("option", { value: "registry" }, "Current registry"), h("option", { value: "all" }, "All registries"));
+  scope.value = keepScope;
+  v.append(h("div", { class: "inline", style: "margin-bottom:14px" }, queryInput, catInput, scope,
     h("button", { class: "btn", onclick: () => renderPublishing(v) }, "Search")));
   const card = h("div", { class: "card" }, h("h3", null, "Published cases"));
   v.append(card);
-  const cat = keepCat;
-  const r = await api("GET", `/api/registries/${state.registry}/published${cat ? "?category=" + encodeURIComponent(cat) : ""}`);
+  const params = new URLSearchParams();
+  if (keepQuery) params.set("q", keepQuery);
+  if (keepCat) params.set("category", keepCat);
+  const path = keepScope === "all" ? "/api/published/search" : `/api/registries/${state.registry}/published`;
+  const r = await api("GET", `${path}?${params}`);
+  if (!ok(r)) { card.append(h("div", { class: "empty" }, r.data.error)); return; }
   if (!r.data.cases.length) card.append(h("div", { class: "empty" }, "No published cases. (A worker can publish a case from its detail view.)"));
-  else card.append(caseTable(m, r.data.cases, (c) => { state.open.publishing = c.diaryNumber; renderPublishing(v); }));
+  else card.append(caseTable(m, r.data.cases, async (c) => {
+    if (c.registryId && c.registryId !== state.registry) {
+      state.registry = c.registryId;
+      $("#registry").value = c.registryId;
+      await refreshMeta();
+    }
+    state.open.publishing = c.diaryNumber;
+    renderPublishing(v);
+  }, keepScope === "all" ? { header: "Registry", cell: (c) => c.registryId } : undefined));
   if (state.open.publishing) v.append(await caseDetailCard("publishing", state.open.publishing));
 }
 
