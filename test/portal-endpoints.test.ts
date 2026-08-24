@@ -92,6 +92,7 @@ test("published super-search matches literal substrings in public cases and sele
   assert.equal(((await dispatch(p, { method: "GET", url: "/api/registries/permit/published?q=mussel", body: undefined })).body as { cases: unknown[] }).cases.length, 1);
   assert.equal(((await dispatch(p, { method: "GET", url: "/api/registries/permit/published?q=searchable%20secret", body: undefined })).body as { cases: unknown[] }).cases.length, 0);
   assert.equal(((await dispatch(p, { method: "GET", url: "/api/registries/permit/published?q=dredging", body: undefined })).body as { cases: unknown[] }).cases.length, 0);
+  assert.equal(((await dispatch(p, { method: "GET", url: "/api/registries/permit/published?category=105%25", body: undefined })).body as { cases: unknown[] }).cases.length, 0);
 
   const globalResult = await dispatch(p, { method: "GET", url: "/api/published/search?q=foundation", body: undefined });
   assert.equal(globalResult.status, 200);

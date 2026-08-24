@@ -104,12 +104,13 @@ export async function listCustomerCases(registryDb: Db, customerId: string): Pro
  * public field values, and explicitly published operation content.
  */
 export async function searchPublishedCases(registryDb: Db, options: PublishedSearchOptions = {}): Promise<PublishedCaseView[]> {
+  const escapedCategoryPrefix = options.categoryPrefix ? escapeLikePattern(options.categoryPrefix) : undefined;
   const rows = options.categoryPrefix
     ? await registryDb.all(
         `SELECT p.diary_number, p.category, p.state, p.fields_json, p.published_at
            FROM published_cases p
-          WHERE p.category LIKE ? ORDER BY p.published_at DESC`,
-        [options.categoryPrefix + "%"],
+          WHERE p.category LIKE ? ESCAPE '!' ORDER BY p.published_at DESC`,
+        [escapedCategoryPrefix + "%"],
       )
     : await registryDb.all(
         `SELECT p.diary_number, p.category, p.state, p.fields_json, p.published_at
@@ -123,7 +124,9 @@ export async function searchPublishedCases(registryDb: Db, options: PublishedSea
       `SELECT pc.diary_number, po.type, po.subtype, po.properties, po.comment
          FROM published_operations po
          JOIN published_cases pc ON pc.case_key = po.case_key
+        ${escapedCategoryPrefix ? "WHERE pc.category LIKE ? ESCAPE '!'" : ""}
         ORDER BY po.operation_id`,
+      escapedCategoryPrefix ? [escapedCategoryPrefix + "%"] : [],
     );
     for (const operation of operations) {
       const diaryNumber = String(operation.diary_number);
@@ -146,7 +149,13 @@ export async function searchPublishedCases(registryDb: Db, options: PublishedSea
 }
 
 function normalizeSearchText(value: string): string {
-  return value.normalize("NFKC").toLocaleLowerCase("en");
+  // Locale-independent casing keeps the API deterministic across hosts. This
+  // is substring matching rather than linguistic full-text search.
+  return value.normalize("NFKC").toLowerCase();
+}
+
+function escapeLikePattern(value: string): string {
+  return value.replaceAll("!", "!!").replaceAll("%", "!%").replaceAll("_", "!_");
 }
 
 function searchableScalars(value: unknown): string[] {
