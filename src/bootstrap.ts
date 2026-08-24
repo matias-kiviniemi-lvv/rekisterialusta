@@ -25,6 +25,7 @@ import { StubIdentityProvider, type IdentityProvider } from "./auth/identity.ts"
 import { MemoryBlobStore, type BlobStore } from "./blob/blob.ts";
 import { applyPlatformConfig, applyRegistryConfig } from "./services/config-apply.ts";
 import { PLATFORM_CONFIG, ALL_REGISTRIES } from "./config/platform-config.ts";
+import { createLogger, type Logger } from "./logging/logger.ts";
 
 export function fixedClock(now: string): Clock {
   return { now: () => now };
@@ -38,10 +39,8 @@ export interface SamplePlatform {
   dbs: Record<string, DbAdapter>;
 }
 
-export interface BootstrapLogger {
-  info(message: string): void;
-  error(message: string): void;
-}
+/** @deprecated Prefer the application-wide Logger name. */
+export type BootstrapLogger = Logger;
 
 export interface RuntimeAdapters {
   /** Required in production; the development token parser is intentionally fail-closed there. */
@@ -51,10 +50,7 @@ export interface RuntimeAdapters {
   readonly environment?: "development" | "test" | "production";
 }
 
-const defaultBootstrapLogger: BootstrapLogger = {
-  info: (message) => process.stdout.write(`${message}\n`),
-  error: (message) => process.stderr.write(`${message}\n`),
-};
+const defaultBootstrapLogger = createLogger();
 
 function describeTarget(target: DbTarget): string {
   if (target.dialect === "sqlite") return target.file ?? ":memory:";
