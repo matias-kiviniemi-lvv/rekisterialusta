@@ -30,7 +30,7 @@ export async function resolvePrincipal(platform: Platform, authHeader: string | 
   const table = actor.kind === "customer" ? "customers" : actor.kind === "worker" ? "workers" : null;
   const column = actor.kind === "customer" ? "customer_id" : actor.kind === "worker" ? "worker_id" : null;
   if (!table || !column) return { kind: "public" };
-  const id = actor.kind === "customer" ? actor.customerId : actor.workerId;
+  const id = actor.kind === "customer" ? actor.customerId : actor.kind === "worker" ? actor.workerId : "";
   const active = await platform.shared.get(`SELECT 1 AS ok FROM ${table} WHERE ${column} = ? AND active = 1`, [id]);
   return active ? { kind: "actor", actor } : { kind: "public" };
 }

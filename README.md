@@ -40,6 +40,13 @@ no external services, no dependencies at runtime (Node 22 native type-stripping
   "Acting as" switch changes the stub-identity bearer so you can watch the two
   auth systems and admin gating behave differently per role. Run `npm run serve`
   and open http://localhost:8080.
+- **Published super-search (Phase 1)** — case-insensitive literal substring
+  search over diary number, category, state, selected public field values, and
+  explicitly published operation content. Search stays on each registry's
+  transactional public projection: use
+  `GET /api/registries/:registry/published?q=...` for one registry or
+  `GET /api/published/search?q=...` for a bounded federated search across them.
+  Queries are 3–200 characters and responses are capped at 50 cases.
 
 - **Internal BIGINT key + public diary number** (D-01/D-02) — `cases.case_key`
   is the surrogate PK; `diary_number` (`REGISTRY/YEAR/NUMBER`) is a unique public
@@ -154,6 +161,9 @@ never logged in full.
   production it is pushed into SQL as an indexed `path LIKE grant || '%'` test.
 - Deferred by choice: the outbox is written atomically, but a concrete message
   broker dispatcher, retries, and consumer idempotency remain integration work.
+- Published super-search currently scans the public projections and is intended
+  to provide usage and data-volume evidence before adding full-text or n-gram
+  indexes. It does not maintain a downstream copy of registry data.
 - Not yet built: the management-portal **UI** (the admin *backend* is done);
   **Phase 6** — full authorization test matrix, performance, retention, security
   review. Also pending: the real **SQL Server adapter over oino-ts** (D-04,

@@ -72,7 +72,7 @@ export async function changeStateTx(db: Db, input: ChangeStateInput, now: string
       now,
     );
     const correlationId = input.correlationId ?? `state:${input.caseKey}:${now}`;
-    await appendAudit(db, { actorKind: input.actorKind, actorId: input.actorId, action: "case.transition", targetType: "case", targetId: String(input.caseKey), correlationId, details: { from: fromState, to: input.toState } }, now);
+    await appendAudit(db, { actorKind: input.actorKind, ...(input.actorId !== undefined ? { actorId: input.actorId } : {}), action: "case.transition", targetType: "case", targetId: String(input.caseKey), correlationId, details: { from: fromState, to: input.toState } }, now);
     await appendOutbox(db, { eventType: "case.state.changed", aggregateType: "case", aggregateId: String(input.caseKey), correlationId, payload: { from: fromState, to: input.toState } }, now);
     return { fromState, toState: input.toState, version: version + 1 };
 }
