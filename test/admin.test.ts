@@ -52,6 +52,40 @@ test("admin adds a state + transition and a case can use it", async () => {
   }
 });
 
+test("admin adds a worker operation form and it is immediately usable with audience gating", async () => {
+  const { platform: p, db } = await buildSamplePlatform(fixedClock(NOW));
+  const added = await dispatch(p, {
+    method: "POST", url: "/api/admin/registries/permit/forms", authorization: asWorker("w-admin"),
+    body: {
+      formId: "record-inspection", kind: "operation", audience: "worker", title: "Record inspection",
+      operationType: "inspection", allowAttachments: false,
+      propertySchema: {
+        type: "object", properties: { outcome: { type: "string" } }, required: ["outcome"], additionalProperties: false,
+      },
+    },
+  });
+  assert.equal(added.status, 201);
+
+  const created = await dispatch(p, {
+    method: "POST", url: "/api/registries/permit/cases", authorization: asWorker("w-admin"),
+    body: { category: "105.04.03", fields: { applicant_name: "A", permit_kind: "water", fee_paid: false } },
+  });
+  const diary = (created.body as { diaryNumber: string }).diaryNumber;
+  const submitUrl = "/api/registries/permit/forms/record-inspection/submit";
+
+  assert.equal((await dispatch(p, {
+    method: "POST", url: submitUrl, authorization: "Bearer customer:c-1",
+    body: { diaryNumber: diary, properties: { outcome: "passed" } },
+  })).status, 403);
+  assert.equal((await dispatch(p, {
+    method: "POST", url: submitUrl, authorization: asWorker("w-admin"),
+    body: { diaryNumber: diary, properties: { outcome: "passed" } },
+  })).status, 201);
+  const operation = await db.get("SELECT type, properties FROM operations WHERE type = 'inspection'");
+  assert.equal(operation?.type, "inspection");
+  assert.deepEqual(JSON.parse(String(operation?.properties)), { outcome: "passed" });
+});
+
 test("admin mints a scoped API token and can revoke it", async () => {
   const { platform: p } = await buildSamplePlatform(fixedClock(NOW));
   // A token that may read UNPUBLISHED cases under 105 — access public lacks.

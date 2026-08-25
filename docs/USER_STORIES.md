@@ -89,9 +89,9 @@ against the form's JSON schema before recording the operation.
 
 ##### 1.1.6.1 Automated test coverage
 
-**Implemented:** `forms.test.ts`: JSON-schema rejection and successful operation creation.
+**Implemented:** `forms.test.ts`: JSON-schema rejection, successful operation creation, rejection of additional properties, and non-owner access without recording an operation.
 
-**Priority cases to add:** Cover additional properties, type/size boundaries, non-owner access, operation ordering, and retry/idempotency.
+**Priority cases to add:** Cover type/size boundaries, operation ordering, and retry/idempotency.
 
 #### 1.1.7 Attach a file through an operation form
 
@@ -196,7 +196,7 @@ when allowed, so that validated work activity is added to the case history.
 
 ##### 2.1.8.1 Automated test coverage
 
-**Implemented:** No direct worker-operation-form test; customer operation behavior is covered by `forms.test.ts`.
+**Implemented:** `admin.test.ts`: an admin-created worker operation form is immediately usable by a worker and rejects the customer audience; customer operation behavior is covered by `forms.test.ts`.
 
 **Priority cases to add:** Add worker audience success, customer rejection, authorization boundaries, schema/attachment limits, and atomic operation/blob/audit/outbox state.
 
@@ -220,9 +220,9 @@ controlled case data remains governed.
 
 ##### 2.1.10.1 Automated test coverage
 
-**Implemented:** `forms.test.ts`: approval success and unauthorized worker; `user-story-state.test.ts`: exact approved projection.
+**Implemented:** `forms.test.ts`: approval success, unauthorized worker, rejection with unchanged case data, and conflicts on repeat decisions; `user-story-state.test.ts`: exact approved projection.
 
-**Priority cases to add:** Add rejection with unchanged case data, double approve/reject conflict, concurrent decisions, stale case version, and rollback of pending/case/history/audit/outbox.
+**Priority cases to add:** Add concurrent decisions, stale case version, and rollback of pending/case/history/audit/outbox.
 
 #### 2.1.11 Publish an explicit case projection
 
@@ -243,9 +243,9 @@ so that it no longer appears on the anonymous publishing surface.
 
 ##### 2.1.12.1 Automated test coverage
 
-**Implemented:** No dedicated automated unpublish test.
+**Implemented:** `portal-endpoints.test.ts`: unpublishing removes list and detail projections while preserving the customer's internal case.
 
-**Priority cases to add:** Verify public disappearance, internal data preservation, repeated unpublish semantics, authorization, audit/outbox, and transaction rollback.
+**Priority cases to add:** Verify repeated unpublish semantics, authorization, audit/outbox, and transaction rollback.
 
 ## 3. Public visitor
 
@@ -346,7 +346,7 @@ submit governed data.
 
 ##### 4.1.5.1 Automated test coverage
 
-**Implemented:** No dedicated automated admin-form creation test.
+**Implemented:** `admin.test.ts`: creation and immediate use of a worker operation form, including schema settings, operation type, attachment setting, and audience enforcement.
 
 **Priority cases to add:** Cover both kinds/audiences, approval flag, field subset, schema, attachment/operation settings, invalid combinations, immediate usability, and rollback.
 

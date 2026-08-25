@@ -58,6 +58,32 @@ test("publish endpoint makes a case public and is worker-gated", async () => {
   assert.equal(((await dispatch(p, { method: "GET", url: "/api/registries/permit/published", body: undefined })).body as { cases: unknown[] }).cases.length, 1);
 });
 
+test("unpublishing removes the public projection but preserves the internal case", async () => {
+  const { platform: p } = await buildSamplePlatform(fixedClock(NOW));
+  const diary = ((await dispatch(p, {
+    method: "POST", url: "/api/registries/permit/cases", authorization: customer("c-1"),
+    body: { category: "105.04.03", fields: { applicant_name: "A", permit_kind: "w", fee_paid: false } },
+  })).body as { diaryNumber: string }).diaryNumber;
+  const caseUrl = `/api/registries/permit/cases/${encodeURIComponent(diary)}`;
+
+  assert.equal((await dispatch(p, {
+    method: "POST", url: `${caseUrl}/publish`, authorization: worker("w-anna"),
+    body: { publish: true, fields: ["applicant_name"] },
+  })).status, 200);
+  assert.equal((await dispatch(p, { method: "GET", url: caseUrl, body: undefined })).status, 200);
+
+  const unpublished = await dispatch(p, {
+    method: "POST", url: `${caseUrl}/publish`, authorization: worker("w-anna"), body: { publish: false },
+  });
+  assert.deepEqual(unpublished, { status: 200, body: { isPublished: false } });
+  assert.equal((await dispatch(p, { method: "GET", url: caseUrl, body: undefined })).status, 403);
+  assert.equal(((await dispatch(p, { method: "GET", url: "/api/registries/permit/published", body: undefined })).body as { cases: unknown[] }).cases.length, 0);
+
+  const internal = await dispatch(p, { method: "GET", url: caseUrl, authorization: customer("c-1"), body: undefined });
+  assert.equal(internal.status, 200);
+  assert.equal((internal.body as { case: { diaryNumber: string } }).case.diaryNumber, diary);
+});
+
 test("published super-search matches literal substrings in public cases and selected operations", async () => {
   const { platform: p } = await buildSamplePlatform(fixedClock(NOW));
   const permitDiary = ((await dispatch(p, {
