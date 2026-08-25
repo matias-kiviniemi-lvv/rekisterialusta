@@ -72,6 +72,12 @@ test("unpublishing removes the public projection but preserves the internal case
   })).status, 200);
   assert.equal((await dispatch(p, { method: "GET", url: caseUrl, body: undefined })).status, 200);
 
+  // A worker outside the category grant cannot withdraw the publication.
+  assert.equal((await dispatch(p, {
+    method: "POST", url: `${caseUrl}/publish`, authorization: worker("w-bo"), body: { publish: false },
+  })).status, 403);
+  assert.equal((await dispatch(p, { method: "GET", url: caseUrl, body: undefined })).status, 200);
+
   const unpublished = await dispatch(p, {
     method: "POST", url: `${caseUrl}/publish`, authorization: worker("w-anna"), body: { publish: false },
   });
@@ -82,6 +88,12 @@ test("unpublishing removes the public projection but preserves the internal case
   const internal = await dispatch(p, { method: "GET", url: caseUrl, authorization: customer("c-1"), body: undefined });
   assert.equal(internal.status, 200);
   assert.equal((internal.body as { case: { diaryNumber: string } }).case.diaryNumber, diary);
+
+  // Repeating the desired state is idempotent from the API consumer's perspective.
+  assert.deepEqual(await dispatch(p, {
+    method: "POST", url: `${caseUrl}/publish`, authorization: worker("w-anna"), body: { publish: false },
+  }), { status: 200, body: { isPublished: false } });
+  assert.equal(((await dispatch(p, { method: "GET", url: "/api/registries/permit/published", body: undefined })).body as { cases: unknown[] }).cases.length, 0);
 });
 
 test("published super-search matches literal substrings in public cases and selected operations", async () => {

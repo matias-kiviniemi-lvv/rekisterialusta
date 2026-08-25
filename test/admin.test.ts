@@ -73,12 +73,25 @@ test("admin adds a worker operation form and it is immediately usable with audie
   const diary = (created.body as { diaryNumber: string }).diaryNumber;
   const submitUrl = "/api/registries/permit/forms/record-inspection/submit";
 
+  // The configured worker audience excludes customers.
   assert.equal((await dispatch(p, {
     method: "POST", url: submitUrl, authorization: "Bearer customer:c-1",
     body: { diaryNumber: diary, properties: { outcome: "passed" } },
   })).status, 403);
+
+  // Attachment configuration is enforced before an operation is persisted.
   assert.equal((await dispatch(p, {
-    method: "POST", url: submitUrl, authorization: asWorker("w-admin"),
+    method: "POST", url: submitUrl, authorization: asWorker("w-anna"),
+    body: {
+      diaryNumber: diary, properties: { outcome: "passed" },
+      attachments: [{ filename: "inspection.txt", contentType: "text/plain", base64: "cGFzc2Vk" }],
+    },
+  })).status, 400);
+  assert.equal(Number((await db.get("SELECT COUNT(*) AS n FROM operations WHERE type = 'inspection'"))?.n), 0);
+
+  // A category-authorized non-admin worker can use the newly added form.
+  assert.equal((await dispatch(p, {
+    method: "POST", url: submitUrl, authorization: asWorker("w-anna"),
     body: { diaryNumber: diary, properties: { outcome: "passed" } },
   })).status, 201);
   const operation = await db.get("SELECT type, properties FROM operations WHERE type = 'inspection'");

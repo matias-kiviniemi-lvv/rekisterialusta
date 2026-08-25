@@ -53,17 +53,20 @@ test("a worker without approve permission cannot approve", async () => {
 test("rejecting a pending case update preserves the case and cannot be decided twice", async () => {
   const { platform: p, db } = await buildSamplePlatform(fixedClock(NOW));
   const diary = await seedCase(p);
-  await dispatch(p, {
+  const submitted = await dispatch(p, {
     method: "POST", url: "/api/registries/permit/forms/update-site-address/submit", authorization: asCustomer("c-1"),
     body: { diaryNumber: diary, fields: { site_address: "Rejected Road 1" } },
   });
+  assert.equal(submitted.status, 202);
 
   const rejected = await dispatch(p, {
     method: "POST", url: "/api/registries/permit/pending/1/reject", authorization: asWorker("w-anna"), body: {},
   });
   assert.deepEqual(rejected, { status: 200, body: { decision: "rejected" } });
   assert.equal((await db.get("SELECT site_address FROM cases WHERE diary_number = ?", [diary]))?.site_address, null);
-  assert.equal((await db.get("SELECT status, decided_by FROM pending_case_updates WHERE pending_id = 1"))?.status, "rejected");
+  const pending = await db.get("SELECT status, decided_by FROM pending_case_updates WHERE pending_id = 1");
+  assert.equal(pending?.status, "rejected");
+  assert.equal(pending?.decided_by, "w-anna");
 
   for (const decision of ["approve", "reject"]) {
     const repeated = await dispatch(p, {

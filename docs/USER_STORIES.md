@@ -198,7 +198,7 @@ when allowed, so that validated work activity is added to the case history.
 
 **Implemented:** `admin.test.ts`: an admin-created worker operation form is immediately usable by a worker and rejects the customer audience; customer operation behavior is covered by `forms.test.ts`.
 
-**Priority cases to add:** Add worker audience success, customer rejection, authorization boundaries, schema/attachment limits, and atomic operation/blob/audit/outbox state.
+**Priority cases to add:** Add inaccessible-category authorization, schema boundaries, allowed-attachment limits, and atomic operation/blob/audit/outbox state.
 
 #### 2.1.9 Review pending customer changes
 
@@ -243,9 +243,9 @@ so that it no longer appears on the anonymous publishing surface.
 
 ##### 2.1.12.1 Automated test coverage
 
-**Implemented:** `portal-endpoints.test.ts`: unpublishing removes list and detail projections while preserving the customer's internal case.
+**Implemented:** `portal-endpoints.test.ts`: unpublishing removes list and detail projections while preserving the customer's internal case; category authorization and repeated unpublish behavior are also covered.
 
-**Priority cases to add:** Verify repeated unpublish semantics, authorization, audit/outbox, and transaction rollback.
+**Priority cases to add:** Verify audit/outbox details and transaction rollback.
 
 ## 3. Public visitor
 
@@ -348,7 +348,7 @@ submit governed data.
 
 **Implemented:** `admin.test.ts`: creation and immediate use of a worker operation form, including schema settings, operation type, attachment setting, and audience enforcement.
 
-**Priority cases to add:** Cover both kinds/audiences, approval flag, field subset, schema, attachment/operation settings, invalid combinations, immediate usability, and rollback.
+**Priority cases to add:** Cover customer case forms, approval flags, field subsets, invalid combinations, and rollback.
 
 #### 4.1.6 Add a state-change rule
 
