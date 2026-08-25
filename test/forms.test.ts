@@ -50,6 +50,33 @@ test("a worker without approve permission cannot approve", async () => {
   assert.equal((await dispatch(p, { method: "POST", url: "/api/registries/permit/pending/1/approve", authorization: asWorker("w-bo"), body: {} })).status, 403);
 });
 
+test("rejecting a pending case update preserves the case and cannot be decided twice", async () => {
+  const { platform: p, db } = await buildSamplePlatform(fixedClock(NOW));
+  const diary = await seedCase(p);
+  const submitted = await dispatch(p, {
+    method: "POST", url: "/api/registries/permit/forms/update-site-address/submit", authorization: asCustomer("c-1"),
+    body: { diaryNumber: diary, fields: { site_address: "Rejected Road 1" } },
+  });
+  assert.equal(submitted.status, 202);
+
+  const rejected = await dispatch(p, {
+    method: "POST", url: "/api/registries/permit/pending/1/reject", authorization: asWorker("w-anna"), body: {},
+  });
+  assert.deepEqual(rejected, { status: 200, body: { decision: "rejected" } });
+  assert.equal((await db.get("SELECT site_address FROM cases WHERE diary_number = ?", [diary]))?.site_address, null);
+  const pending = await db.get("SELECT status, decided_by FROM pending_case_updates WHERE pending_id = 1");
+  assert.equal(pending?.status, "rejected");
+  assert.equal(pending?.decided_by, "w-anna");
+
+  for (const decision of ["approve", "reject"]) {
+    const repeated = await dispatch(p, {
+      method: "POST", url: `/api/registries/permit/pending/1/${decision}`, authorization: asWorker("w-anna"), body: {},
+    });
+    assert.equal(repeated.status, 409);
+  }
+  assert.equal((await db.get("SELECT site_address FROM cases WHERE diary_number = ?", [diary]))?.site_address, null);
+});
+
 test("operation form validates payload against its JSON schema and stores attachments", async () => {
   const { platform: p, db } = await buildSamplePlatform(fixedClock(NOW));
   const diary = await seedCase(p);
@@ -81,4 +108,32 @@ test("wrong audience is rejected (worker submitting a customer form)", async () 
   const diary = await seedCase(p);
   const r = await dispatch(p, { method: "POST", url: "/api/registries/permit/forms/update-site-address/submit", authorization: asWorker("w-anna"), body: { diaryNumber: diary, fields: { site_address: "Y" } } });
   assert.equal(r.status, 403);
+});
+
+test("a customer cannot submit an operation form against another customer's case", async () => {
+  const { platform: p, db } = await buildSamplePlatform(fixedClock(NOW));
+  const diary = await seedCase(p, "c-1");
+  const before = Number((await db.get("SELECT COUNT(*) AS n FROM operations"))?.n);
+
+  const response = await dispatch(p, {
+    method: "POST", url: "/api/registries/permit/forms/submit-document/submit", authorization: asCustomer("c-2"),
+    body: { diaryNumber: diary, properties: { documentTitle: "Not mine" } },
+  });
+
+  assert.equal(response.status, 403);
+  assert.equal(Number((await db.get("SELECT COUNT(*) AS n FROM operations"))?.n), before);
+});
+
+test("operation form rejects additional schema properties without recording an operation", async () => {
+  const { platform: p, db } = await buildSamplePlatform(fixedClock(NOW));
+  const diary = await seedCase(p);
+  const before = Number((await db.get("SELECT COUNT(*) AS n FROM operations"))?.n);
+
+  const response = await dispatch(p, {
+    method: "POST", url: "/api/registries/permit/forms/submit-document/submit", authorization: asCustomer("c-1"),
+    body: { diaryNumber: diary, properties: { documentTitle: "Deed", internalOverride: true } },
+  });
+
+  assert.equal(response.status, 400);
+  assert.equal(Number((await db.get("SELECT COUNT(*) AS n FROM operations"))?.n), before);
 });
