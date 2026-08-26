@@ -12,6 +12,9 @@ no external services, no dependencies at runtime (Node 22 native type-stripping
 
 The implemented product behavior is summarized as a numbered, role-oriented
 set of [`user stories`](docs/USER_STORIES.md), grouped by portal or component.
+The proposed architecture, rollout, and ownership model for Finnish, Swedish,
+and English support is documented in the
+[`multilingual support plan`](docs/MULTILINGUAL_SUPPORT_PLAN.md).
 
 ## What's here
 
