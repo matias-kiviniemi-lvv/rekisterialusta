@@ -1,9 +1,18 @@
 "use strict";
+import { createI18n, resolveLocale, translateDocument } from "./i18n.js";
+import * as fiCatalog from "./locales/fi.js";
 /*
  * Registry Platform — MVP console (vanilla JS, no build step).
  * Drives the REST API. "Acting as" chooses the stub-identity bearer so you can
  * watch the two auth systems and admin gating behave differently per role.
  */
+
+const locale = resolveLocale({ query: location.search, stored: localStorage.getItem("locale"), languages: navigator.languages });
+const i18n = createI18n(locale, fiCatalog, (key) => console.warn(`[i18n] missing translation: ${key}`));
+const t = i18n.t;
+const ts = i18n.fromSource;
+translateDocument(document, i18n);
+document.title = t("app.title");
 
 const IDENTITIES = {
   "public": { label: "Public (anonymous)", bearer: null },
@@ -36,7 +45,7 @@ function h(tag, attrs, ...kids) {
     else if (v === true) e.setAttribute(k, "");
     else if (v !== false && v != null) e.setAttribute(k, v);
   }
-  for (const kid of kids.flat()) if (kid != null) e.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  for (const kid of kids.flat()) if (kid != null) e.append(kid.nodeType ? kid : document.createTextNode(ts(String(kid))));
   return e;
 }
 const $ = (sel) => document.querySelector(sel);
@@ -64,7 +73,7 @@ function toast(msg, kind) {
 }
 function ok(r, okMsg) {
   if (r.status >= 200 && r.status < 300) { if (okMsg) toast(okMsg, "ok"); return true; }
-  toast(`${r.status}: ${r.data && r.data.error ? r.data.error : "request failed"}`, "err");
+  toast(`${r.status}: ${r.data && r.data.error ? r.data.error : t("error.requestFailed")}`, "err");
   return false;
 }
 
@@ -77,13 +86,21 @@ function stateBadge(m, stateId, isPublished) {
   const s = (m.states || []).find((x) => x.id === stateId) || { name: stateId };
   const cls = s.isWaitingForCustomer ? "waiting" : s.isOpen ? "open" : "closed";
   const els = [h("span", { class: "badge " + cls }, s.name || stateId)];
-  if (isPublished) els.push(" ", h("span", { class: "badge pub" }, "published"));
+  if (isPublished) els.push(" ", h("span", { class: "badge pub" }, t("status.published")));
   return els;
 }
 
 // ---- boot ------------------------------------------------------------------
 
 async function boot() {
+  const language = $("#language");
+  language.value = i18n.locale;
+  language.addEventListener("change", () => {
+    localStorage.setItem("locale", language.value);
+    const url = new URL(location.href);
+    url.searchParams.set("lang", language.value);
+    location.assign(url);
+  });
   const idSel = $("#identity");
   for (const [k, v] of Object.entries(IDENTITIES)) idSel.append(h("option", { value: k }, v.label));
   idSel.value = state.identity;
@@ -115,7 +132,7 @@ async function boot() {
 function render() {
   const v = $("#view");
   v.innerHTML = "";
-  if (!meta()) { v.append(h("p", { class: "empty" }, "Loading…")); return; }
+  if (!meta()) { v.append(h("p", { class: "empty" }, t("common.loading"))); return; }
   ({ customer: renderCustomer, worker: renderWorker, publishing: renderPublishing, management: renderManagement }[state.tab])(v);
 }
 
@@ -173,12 +190,12 @@ function showNewCaseForm(v) {
     h("div", { class: "field" }, h("label", null, "Category"), categorySelect()),
     ...m.fields.map((f) => h("div", { class: "field" },
       h("label", null, f.name, f.nullable ? "" : h("span", { class: "req" }, " *")), fieldInput(f))),
-    h("p", { class: "sub" }, `Opens in initial state: ${initial.name}`),
+    h("p", { class: "sub" }, t("customer.initialState", { state: initial.name })),
     h("button", { class: "btn", onclick: async () => {
       const fields = {};
       for (const f of m.fields) { const val = readField(f); if (val !== undefined && val !== null) fields[f.name] = val; }
       const r = await api("POST", `/api/registries/${state.registry}/cases`, { category: $("#cat_sel").value, initialState: initial.id, fields });
-      if (ok(r, `Created ${r.data.diaryNumber}`)) { state.open.customer = r.data.diaryNumber; renderCustomer($("#view")); }
+      if (ok(r, t("customer.created", { diary: r.data.diaryNumber }))) { state.open.customer = r.data.diaryNumber; renderCustomer($("#view")); }
     } }, "Create case"));
   v.append(form);
   form.scrollIntoView({ behavior: "smooth" });
@@ -570,9 +587,9 @@ async function caseDetailCard(tab, diary) {
   const r = await api("GET", `/api/registries/${state.registry}/cases/${encodeURIComponent(diary)}`);
   const card = h("div", { class: "card" });
   card.append(h("div", { class: "inline", style: "justify-content:space-between" },
-    h("h3", null, "Case " + diary),
+    h("h3", null, t("case.heading", { diary })),
     h("button", { class: "btn ghost sm", onclick: () => { state.open[tab] = null; render(); } }, "Close")));
-  if (r.status !== 200) { card.append(h("div", { class: "hint" }, `Not visible to this identity (${r.status}). Try a different “Acting as”.`)); return card; }
+  if (r.status !== 200) { card.append(h("div", { class: "hint" }, t("case.notVisible", { status: r.status }))); return card; }
   const c = r.data.case;
   card.append(h("dl", { class: "kv" },
     h("dt", null, "State"), h("dd", null, stateBadge(m, c.state, tab === "publishing" || c.isPublished)),
@@ -700,4 +717,4 @@ function stateSelect(id) {
   return h("select", { id }, ...meta().states.map((s) => h("option", { value: s.id }, s.name)));
 }
 
-boot().catch((e) => { console.error(e); toast("Failed to start: " + e.message, "err"); });
+boot().catch((e) => { console.error(e); toast(t("error.startFailed", { message: e.message }), "err"); });

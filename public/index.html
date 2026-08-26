@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="fi">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Registry Platform — Console</title>
+  <title data-i18n="app.title">Rekisterialusta — hallintakonsoli</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -11,36 +11,38 @@
     <div class="brand">
       <span class="logo">▤</span>
       <div>
-        <div class="brand-title">Registry Platform</div>
-        <div class="brand-sub">Rekisterialusta · MVP console</div>
+        <div class="brand-title" data-i18n="brand.title">Rekisterialusta</div>
+        <div class="brand-sub" data-i18n="brand.subtitle">Hallintakonsoli · MVP</div>
       </div>
     </div>
     <div class="context">
-      <label>Acting as
+      <label><span data-i18n="context.identity">Käyttäjärooli</span>
         <select id="identity"></select>
       </label>
-      <label>Registry
+      <label><span data-i18n="context.registry">Rekisteri</span>
         <select id="registry"></select>
+      </label>
+      <label><span data-i18n="context.language">Kieli</span>
+        <select id="language" aria-label="Kieli">
+          <option value="fi" data-i18n="language.fi">Suomi</option>
+        </select>
       </label>
     </div>
   </header>
 
   <nav class="tabs" id="tabs">
-    <button data-tab="customer" class="active">Customer portal</button>
-    <button data-tab="worker">Case-worker portal</button>
-    <button data-tab="publishing">Publishing portal</button>
-    <button data-tab="management">Management portal</button>
+    <button data-tab="customer" class="active" data-i18n="nav.customer">Asiointi</button>
+    <button data-tab="worker" data-i18n="nav.worker">Asianhallinta</button>
+    <button data-tab="publishing" data-i18n="nav.publishing">Julkaiseminen</button>
+    <button data-tab="management" data-i18n="nav.management">Hallinta</button>
   </nav>
 
   <main id="view"></main>
 
   <div id="toast" class="toast" hidden></div>
 
-  <footer class="foot">
-    Stub identity (dev) · data is in-memory and resets on server restart ·
-    switch "Acting as" to see the two auth systems and admin gating in action.
-  </footer>
+  <footer class="foot" data-i18n="footer.notice">Kehitysympäristön testi-identiteetti · muistissa olevat tiedot nollautuvat palvelimen uudelleenkäynnistyksessä · vaihda käyttäjäroolia kokeillaksesi käyttöoikeuksia.</footer>
 
-  <script src="/app.js"></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

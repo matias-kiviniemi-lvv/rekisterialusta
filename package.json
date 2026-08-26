@@ -9,6 +9,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "i18n:check": "node --test --experimental-strip-types test/i18n.test.ts",
     "test": "node --test --experimental-strip-types test/*.test.ts",
     "demo": "node --experimental-strip-types scripts/demo.ts",
     "api-demo": "node --experimental-strip-types scripts/api-demo.ts",
