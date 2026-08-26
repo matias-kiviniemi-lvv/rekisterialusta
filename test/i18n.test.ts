@@ -36,3 +36,16 @@ test("all static document and programmatic translation keys exist in Finnish", (
   assert.deepEqual(missing, []);
   assert.equal(Object.values(fi.sourceKeys).every((key) => key in fi.messages), true);
 });
+
+test("dynamic DOM children are not implicitly translated", () => {
+  const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+  assert.match(app, /document\.createTextNode\(String\(kid\)\)/);
+  assert.doesNotMatch(app, /document\.createTextNode\(ts\(String\(kid\)\)\)/);
+  assert.match(app, /t\("common\.open"\)/);
+});
+
+test("locale storage failures are isolated from application startup", () => {
+  const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+  assert.match(app, /function readStoredLocale\(\) \{\s*try \{ return localStorage\.getItem\("locale"\); \}\s*catch \{ return null; \}/);
+  assert.match(app, /stored: readStoredLocale\(\)/);
+});
