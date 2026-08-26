@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title data-i18n="app.title">Rekisterialusta — hallintakonsoli</title>
+  <title data-i18n="app.title">Rekisterialusta | Lupa- ja valvontavirasto</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="logo">▤</span>
-      <div>
+      <img class="brand-logo" src="/lvv-logo.png" alt="Lupa- ja valvontavirasto" />
+      <div class="service-name">
         <div class="brand-title" data-i18n="brand.title">Rekisterialusta</div>
-        <div class="brand-sub" data-i18n="brand.subtitle">Hallintakonsoli · MVP</div>
+        <div class="brand-sub" data-i18n="brand.subtitle">Asiointi- ja käsittelypalvelu</div>
       </div>
     </div>
     <div class="context">
@@ -41,7 +41,10 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <footer class="foot" data-i18n="footer.notice">Kehitysympäristön testi-identiteetti · muistissa olevat tiedot nollautuvat palvelimen uudelleenkäynnistyksessä · vaihda käyttäjäroolia kokeillaksesi käyttöoikeuksia.</footer>
+  <footer class="foot">
+    <span class="foot-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    <span data-i18n="footer.notice">Kehitysympäristön testi-identiteetti · muistissa olevat tiedot nollautuvat palvelimen uudelleenkäynnistyksessä · vaihda käyttäjäroolia kokeillaksesi käyttöoikeuksia.</span>
+  </footer>
 
   <script type="module" src="/app.js"></script>
 </body>
