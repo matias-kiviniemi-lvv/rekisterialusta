@@ -1,18 +1,18 @@
 <!doctype html>
-<html lang="en">
+<html lang="fi">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Registry Platform — Console</title>
+  <title>Rekisterialusta | Lupa- ja valvontavirasto</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="logo">▤</span>
-      <div>
-        <div class="brand-title">Registry Platform</div>
-        <div class="brand-sub">Rekisterialusta · MVP console</div>
+      <img class="brand-logo" src="/lvv-logo.png" alt="Lupa- ja valvontavirasto" />
+      <div class="service-name">
+        <div class="brand-title">Rekisterialusta</div>
+        <div class="brand-sub">Asiointi- ja käsittelypalvelu</div>
       </div>
     </div>
     <div class="context">
@@ -37,8 +37,8 @@
   <div id="toast" class="toast" hidden></div>
 
   <footer class="foot">
-    Stub identity (dev) · data is in-memory and resets on server restart ·
-    switch "Acting as" to see the two auth systems and admin gating in action.
+    <span class="foot-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    <span>Development environment · data resets when the server restarts · switch “Acting as” to test roles and permissions.</span>
   </footer>
 
   <script src="/app.js"></script>

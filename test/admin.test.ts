@@ -67,9 +67,10 @@ test("admin adds a worker operation form and it is immediately usable with audie
   assert.equal(added.status, 201);
 
   const created = await dispatch(p, {
-    method: "POST", url: "/api/registries/permit/cases", authorization: asWorker("w-admin"),
+    method: "POST", url: "/api/registries/permit/cases", authorization: "Bearer customer:c-1",
     body: { category: "105.04.03", fields: { applicant_name: "A", permit_kind: "water", fee_paid: false } },
   });
+  assert.equal(created.status, 201);
   const diary = (created.body as { diaryNumber: string }).diaryNumber;
   const submitUrl = "/api/registries/permit/forms/record-inspection/submit";
 

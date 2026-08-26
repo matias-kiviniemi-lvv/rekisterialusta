@@ -196,9 +196,9 @@ when allowed, so that validated work activity is added to the case history.
 
 ##### 2.1.8.1 Automated test coverage
 
-**Implemented:** `admin.test.ts`: an admin-created worker operation form is immediately usable by a worker and rejects the customer audience; customer operation behavior is covered by `forms.test.ts`.
+**Implemented:** `admin.test.ts`: an admin-created worker operation form is immediately usable by an authorized worker, rejects the customer audience, and rejects a disallowed attachment without persisting an operation; customer operation behavior is covered by `forms.test.ts`.
 
-**Priority cases to add:** Add inaccessible-category authorization, schema boundaries, allowed-attachment limits, and atomic operation/blob/audit/outbox state.
+**Priority cases to add:** Add denial for a worker outside the case category, schema boundaries, limits for forms that allow attachments, and atomic operation/blob/audit/outbox state.
 
 #### 2.1.9 Review pending customer changes
 
