@@ -20,6 +20,7 @@ import { migrate } from "./migrations/runner.ts";
 import { m0001 } from "./migrations/0001_shared_schema.ts";
 import { m0003 } from "./migrations/0003_api_forms_rules.ts";
 import { m0005 } from "./migrations/0005_admin_exports.ts";
+import { m0006Shared } from "./migrations/0006_localized_metadata.ts";
 import { Platform, type Clock } from "./api/platform.ts";
 import { StubIdentityProvider, type IdentityProvider } from "./auth/identity.ts";
 import { MemoryBlobStore, type BlobStore } from "./blob/blob.ts";
@@ -77,7 +78,7 @@ async function bootstrapStep<T>(logger: BootstrapLogger, label: string, fn: () =
  */
 export async function buildSamplePlatform(clock: Clock): Promise<SamplePlatform> {
   const shared = new SqliteAdapter(":memory:");
-  await migrate(shared, [m0001, m0003, m0005], clock.now());
+  await migrate(shared, [m0001, m0003, m0005, m0006Shared], clock.now());
   await applyPlatformConfig(shared, PLATFORM_CONFIG, clock.now());
 
   const platform = new Platform(shared, new StubIdentityProvider(), clock, new MemoryBlobStore());
@@ -127,7 +128,7 @@ export async function bootstrapFromEnv(
     "Running shared database migrations",
     () => migrate(
       shared,
-      [m0001, m0003, m0005],
+      [m0001, m0003, m0005, m0006Shared],
       clock.now(),
       (message) => logger.info(`[bootstrap] Shared migration: ${message}`),
     ),

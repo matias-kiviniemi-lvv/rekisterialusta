@@ -7,17 +7,7 @@ import * as fiCatalog from "./locales/fi.js";
  * watch the two auth systems and admin gating behave differently per role.
  */
 
-function readStoredLocale() {
-  try { return localStorage.getItem("locale"); }
-  catch { return null; }
-}
-
-function storeLocale(value) {
-  try { localStorage.setItem("locale", value); }
-  catch { /* Locale persistence is optional (for example, in privacy-restricted contexts). */ }
-}
-
-const locale = resolveLocale({ query: location.search, stored: readStoredLocale(), languages: navigator.languages });
+const locale = resolveLocale({ query: location.search, stored: localStorage.getItem("locale"), languages: navigator.languages });
 const i18n = createI18n(locale, fiCatalog, (key) => console.warn(`[i18n] missing translation: ${key}`));
 const t = i18n.t;
 const ts = i18n.fromSource;
@@ -55,9 +45,7 @@ function h(tag, attrs, ...kids) {
     else if (v === true) e.setAttribute(k, "");
     else if (v !== false && v != null) e.setAttribute(k, v);
   }
-  // Callers translate known interface copy explicitly. Values from cases and
-  // registry configuration must always be rendered exactly as received.
-  for (const kid of kids.flat()) if (kid != null) e.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  for (const kid of kids.flat()) if (kid != null) e.append(kid.nodeType ? kid : document.createTextNode(ts(String(kid))));
   return e;
 }
 const $ = (sel) => document.querySelector(sel);
@@ -68,7 +56,9 @@ async function api(method, path, body) {
   if (id.bearer) headers["authorization"] = "Bearer " + id.bearer;
   const opts = { method, headers };
   if (body !== undefined) { headers["content-type"] = "application/json"; opts.body = JSON.stringify(body); }
-  const res = await fetch(path, opts);
+  const url = new URL(path, location.origin);
+  url.searchParams.set("lang", locale);
+  const res = await fetch(url, opts);
   let data = null;
   try { data = await res.json(); } catch { /* no body */ }
   return { status: res.status, data };
@@ -108,13 +98,13 @@ async function boot() {
   const language = $("#language");
   language.value = i18n.locale;
   language.addEventListener("change", () => {
-    storeLocale(language.value);
+    localStorage.setItem("locale", language.value);
     const url = new URL(location.href);
     url.searchParams.set("lang", language.value);
     location.assign(url);
   });
   const idSel = $("#identity");
-  for (const [k, v] of Object.entries(IDENTITIES)) idSel.append(h("option", { value: k }, ts(v.label)));
+  for (const [k, v] of Object.entries(IDENTITIES)) idSel.append(h("option", { value: k }, v.label));
   idSel.value = state.identity;
   idSel.addEventListener("change", async () => {
     state.identity = idSel.value;
@@ -174,21 +164,21 @@ function readField(f) {
 async function renderCustomer(v) {
   const m = meta();
   v.innerHTML = "";
-  v.append(h("h2", null, t("customer.title")), h("p", { class: "sub" }, t("customer.subtitle")));
+  v.append(h("h2", null, "Customer portal"), h("p", { class: "sub" }, "See and act on your own cases, and start new ones."));
   if (!state.identity.startsWith("customer:")) {
-    v.append(h("div", { class: "hint" }, t("customer.switchHint")));
+    v.append(h("div", { class: "hint" }, "Switch “Acting as” to Citizen One or Two to use this portal."));
   }
 
   const bar = h("div", { class: "inline", style: "margin-bottom:14px" },
-    h("button", { class: "btn", onclick: () => showNewCaseForm(v) }, t("customer.start")),
-    h("button", { class: "btn ghost sm", onclick: () => render() }, t("common.refresh")));
+    h("button", { class: "btn", onclick: () => showNewCaseForm(v) }, "+ Start a new case"),
+    h("button", { class: "btn ghost sm", onclick: () => render() }, "Refresh"));
   v.append(bar);
 
-  const listCard = h("div", { class: "card" }, h("h3", null, t("customer.myCases")));
+  const listCard = h("div", { class: "card" }, h("h3", null, "My cases"));
   v.append(listCard);
   const r = await api("GET", `/api/registries/${state.registry}/my-cases`);
-  if (r.status !== 200) { listCard.append(h("div", { class: "hint" }, t("customer.signInHint"))); }
-  else if (!r.data.cases.length) listCard.append(h("div", { class: "empty" }, t("customer.empty")));
+  if (r.status !== 200) { listCard.append(h("div", { class: "hint" }, "Sign in as a customer to see your cases.")); }
+  else if (!r.data.cases.length) listCard.append(h("div", { class: "empty" }, "No cases yet. Start one above."));
   else listCard.append(caseTable(m, r.data.cases, (c) => { state.open.customer = c.diaryNumber; renderCustomer(v).catch(console.error); }));
 
   if (state.open.customer) v.append(await caseDetailCard("customer", state.open.customer));
@@ -198,8 +188,8 @@ function showNewCaseForm(v) {
   const m = meta();
   const initial = m.states[0];
   const form = h("div", { class: "card" },
-    h("h3", null, t("customer.newTitle")),
-    h("div", { class: "field" }, h("label", null, t("field.category")), categorySelect()),
+    h("h3", null, "Start a new case"),
+    h("div", { class: "field" }, h("label", null, "Category"), categorySelect()),
     ...m.fields.map((f) => h("div", { class: "field" },
       h("label", null, f.name, f.nullable ? "" : h("span", { class: "req" }, " *")), fieldInput(f))),
     h("p", { class: "sub" }, t("customer.initialState", { state: initial.name })),
@@ -208,7 +198,7 @@ function showNewCaseForm(v) {
       for (const f of m.fields) { const val = readField(f); if (val !== undefined && val !== null) fields[f.name] = val; }
       const r = await api("POST", `/api/registries/${state.registry}/cases`, { category: $("#cat_sel").value, initialState: initial.id, fields });
       if (ok(r, t("customer.created", { diary: r.data.diaryNumber }))) { state.open.customer = r.data.diaryNumber; renderCustomer($("#view")); }
-    } }, t("customer.create")));
+    } }, "Create case"));
   v.append(form);
   form.scrollIntoView({ behavior: "smooth" });
 }
@@ -218,10 +208,10 @@ function showNewCaseForm(v) {
 async function renderWorker(v) {
   const m = meta();
   v.innerHTML = "";
-  v.append(h("h2", null, t("worker.title")), h("p", { class: "sub" }, t("worker.subtitle")));
-  if (!state.identity.startsWith("worker:")) v.append(h("div", { class: "hint" }, t("worker.switchHint")));
+  v.append(h("h2", null, "Case-worker portal"), h("p", { class: "sub" }, "Your queue, bounded by category authorization."));
+  if (!state.identity.startsWith("worker:")) v.append(h("div", { class: "hint" }, "Switch “Acting as” to a worker (Anna 105, Bo 200, Cara 300) to use this portal."));
 
-  const views = [["assigned", t("worker.assigned")], ["unassigned", t("worker.unassigned")], ["authorized", t("worker.authorized")]];
+  const views = [["assigned", "Assigned to me"], ["unassigned", "Unassigned (opted-in)"], ["authorized", "All authorized"]];
   const pills = h("div", { class: "pillbar" }, ...views.map(([k, label]) =>
     h("button", { class: state.workerView === k ? "active" : "", onclick: () => { state.workerView = k; renderWorker(v); } }, label)));
   v.append(pills);
@@ -229,8 +219,8 @@ async function renderWorker(v) {
   const listCard = h("div", { class: "card" });
   v.append(listCard);
   const r = await api("GET", `/api/registries/${state.registry}/worker/cases?view=${state.workerView}`);
-  if (r.status !== 200) listCard.append(h("div", { class: "hint" }, t("worker.authRequired")));
-  else if (!r.data.cases.length) listCard.append(h("div", { class: "empty" }, t("worker.empty")));
+  if (r.status !== 200) listCard.append(h("div", { class: "hint" }, "Worker authentication required."));
+  else if (!r.data.cases.length) listCard.append(h("div", { class: "empty" }, "No cases in this view."));
   else {
     const extra = state.workerView === "unassigned"
       ? { header: "", cell: (c) => h("button", { class: "btn sm ghost", onclick: async (e) => { e.stopPropagation(); const a = await api("POST", `/api/registries/${state.registry}/cases/${encodeURIComponent(c.diaryNumber)}/assign`, {}); if (ok(a, "Assigned to you")) renderWorker(v); } }, "Assign to me") }
@@ -268,16 +258,16 @@ async function renderPublishing(v, newSearch = false) {
   const keepScope = $("#pub_scope") ? $("#pub_scope").value : "registry";
   if (newSearch) state.open.publishing = null;
   v.innerHTML = "";
-  v.append(h("h2", null, t("publishing.title")), h("p", { class: "sub" }, t("publishing.subtitle")));
-  const queryInput = h("input", { id: "pub_query", placeholder: t("publishing.queryPlaceholder"), style: "min-width:280px", value: keepQuery });
-  const catInput = h("input", { id: "pub_cat", placeholder: t("publishing.categoryPlaceholder"), style: "max-width:220px", value: keepCat });
-  const scope = h("select", { id: "pub_scope" }, h("option", { value: "registry" }, t("publishing.currentRegistry")), h("option", { value: "all" }, t("publishing.allRegistries")));
+  v.append(h("h2", null, "Publishing portal"), h("p", { class: "sub" }, "Literal substring search across published case fields and published operation content — nothing private is searched."));
+  const queryInput = h("input", { id: "pub_query", placeholder: "at least 3 characters", style: "min-width:280px", value: keepQuery });
+  const catInput = h("input", { id: "pub_cat", placeholder: "category prefix e.g. 105", style: "max-width:220px", value: keepCat });
+  const scope = h("select", { id: "pub_scope" }, h("option", { value: "registry" }, "Current registry"), h("option", { value: "all" }, "All registries"));
   scope.value = keepScope;
   v.append(h("form", {
     class: "inline", style: "margin-bottom:14px",
     onsubmit: (event) => { event.preventDefault(); renderPublishing(v, true); },
-  }, queryInput, catInput, scope, h("button", { class: "btn", type: "submit" }, t("publishing.search"))));
-  const card = h("div", { class: "card" }, h("h3", null, t("publishing.results")));
+  }, queryInput, catInput, scope, h("button", { class: "btn", type: "submit" }, "Search")));
+  const card = h("div", { class: "card" }, h("h3", null, "Published cases"));
   v.append(card);
   const params = new URLSearchParams();
   if (keepQuery) params.set("q", keepQuery);
@@ -285,7 +275,7 @@ async function renderPublishing(v, newSearch = false) {
   const path = keepScope === "all" ? "/api/published/search" : `/api/registries/${state.registry}/published`;
   const r = await api("GET", `${path}?${params}`);
   if (!ok(r)) { card.append(h("div", { class: "empty" }, r.data.error)); return; }
-  if (!r.data.cases.length) card.append(h("div", { class: "empty" }, t("publishing.empty")));
+  if (!r.data.cases.length) card.append(h("div", { class: "empty" }, "No published cases. (A worker can publish a case from its detail view.)"));
   else card.append(caseTable(m, r.data.cases, async (c) => {
     if (c.registryId && c.registryId !== state.registry) {
       state.registry = c.registryId;
@@ -301,27 +291,27 @@ async function renderPublishing(v, newSearch = false) {
 // ---- Management portal ------------------------------------------------------
 
 const MGMT_SECTIONS = [
-  ["fields", "management.fields"],
-  ["states", "management.states"],
-  ["transitions", "management.transitions"],
-  ["categories", "management.categories"],
-  ["forms", "management.forms"],
-  ["rules", "management.rules"],
-  ["authorizations", "management.authorizations"],
-  ["tokens", "management.tokens"],
-  ["config", "management.config"],
-  ["exports", "management.exports"],
+  ["fields", "Fields"],
+  ["states", "States"],
+  ["transitions", "Transitions"],
+  ["categories", "Categories"],
+  ["forms", "Forms"],
+  ["rules", "Rules"],
+  ["authorizations", "Authorizations"],
+  ["tokens", "Tokens"],
+  ["config", "Config versions"],
+  ["exports", "Exports"],
 ];
 
 async function renderManagement(v) {
   const m = meta();
   v.innerHTML = "";
-  v.append(h("h2", null, t("management.title")), h("p", { class: "sub" }, t("management.subtitle")));
-  if (state.identity !== "worker:w-admin") v.append(h("div", { class: "hint" }, t("management.switchHint")));
+  v.append(h("h2", null, "Management portal"), h("p", { class: "sub" }, "Configure a registry without a release. Admin only."));
+  if (state.identity !== "worker:w-admin") v.append(h("div", { class: "hint" }, "Switch “Acting as” to Admin to use the management portal."));
 
   // Sub-tab navigation — one section per managed resource type.
-  const nav = h("div", { class: "pillbar subnav" }, ...MGMT_SECTIONS.map(([key, labelKey]) =>
-    h("button", { class: state.mgmtSection === key ? "active" : "", onclick: () => { state.mgmtSection = key; renderManagement(v); } }, t(labelKey))));
+  const nav = h("div", { class: "pillbar subnav" }, ...MGMT_SECTIONS.map(([key, label]) =>
+    h("button", { class: state.mgmtSection === key ? "active" : "", onclick: () => { state.mgmtSection = key; renderManagement(v); } }, label)));
   v.append(nav);
 
   const body = h("div", { class: "mgmt-body" });
@@ -579,7 +569,7 @@ function gapNote() {
 // ---- shared building blocks ------------------------------------------------
 
 function caseTable(m, cases, onOpen, extra) {
-  const head = h("tr", null, h("th", null, t("table.diary")), h("th", null, t("table.category")), h("th", null, t("table.state")), h("th", null, ""));
+  const head = h("tr", null, h("th", null, "Diary number"), h("th", null, "Category"), h("th", null, "State"), h("th", null, ""));
   if (extra) head.append(h("th", null, extra.header));
   const tb = h("tbody");
   for (const c of cases) {
@@ -587,7 +577,7 @@ function caseTable(m, cases, onOpen, extra) {
       h("td", { class: "mono" }, c.diaryNumber),
       h("td", { class: "mono" }, c.category),
       h("td", null, stateBadge(m, c.state, c.isPublished)),
-      h("td", null, h("button", { class: "btn sm ghost", onclick: (e) => { e.stopPropagation(); onOpen(c); } }, t("common.open"))));
+      h("td", null, h("button", { class: "btn sm ghost", onclick: (e) => { e.stopPropagation(); onOpen(c); } }, "Open")));
     if (extra) tr.append(h("td", null, extra.cell(c)));
     tb.append(tr);
   }
@@ -600,17 +590,17 @@ async function caseDetailCard(tab, diary) {
   const card = h("div", { class: "card" });
   card.append(h("div", { class: "inline", style: "justify-content:space-between" },
     h("h3", null, t("case.heading", { diary })),
-    h("button", { class: "btn ghost sm", onclick: () => { state.open[tab] = null; render(); } }, t("common.close"))));
+    h("button", { class: "btn ghost sm", onclick: () => { state.open[tab] = null; render(); } }, "Close")));
   if (r.status !== 200) { card.append(h("div", { class: "hint" }, t("case.notVisible", { status: r.status }))); return card; }
   const c = r.data.case;
   card.append(h("dl", { class: "kv" },
-    h("dt", null, t("table.state")), h("dd", null, stateBadge(m, c.state, tab === "publishing" || c.isPublished)),
-    h("dt", null, t("table.category")), h("dd", { class: "mono" }, c.category),
-    h("dt", null, c.created ? t("case.created") : t("case.published")), h("dd", { class: "mono" }, c.created || c.publishedAt || "—")));
+    h("dt", null, "State"), h("dd", null, stateBadge(m, c.state, tab === "publishing" || c.isPublished)),
+    h("dt", null, "Category"), h("dd", { class: "mono" }, c.category),
+    h("dt", null, c.created ? "Created" : "Published"), h("dd", { class: "mono" }, c.created || c.publishedAt || "—")));
   if (c.fields && Object.keys(c.fields).length) {
     const publicFields = h("dl", { class: "kv" });
     for (const [name, value] of Object.entries(c.fields)) publicFields.append(h("dt", null, name), h("dd", null, String(value ?? "—")));
-    card.append(h("h3", null, t("case.publishedFields")), publicFields);
+    card.append(h("h3", null, "Published fields"), publicFields);
   }
 
   // Worker actions.
@@ -619,7 +609,7 @@ async function caseDetailCard(tab, diary) {
   if (tab === "customer" && state.identity.startsWith("customer:")) card.append(customerForms(m, c));
 
   // History.
-  card.append(h("h3", null, t("case.history")));
+  card.append(h("h3", null, "History (append-only)"));
   const hist = h("div", { class: "hist" });
   for (const op of r.data.history) hist.append(h("div", { class: "op" },
     h("span", { class: "op-type" }, `#${op.operationId} ${op.type}`), " ",
