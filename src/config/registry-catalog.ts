@@ -20,6 +20,9 @@ export interface DiaryFormat {
 
 export interface RegistryFieldDef {
   readonly name: string;
+  /** Localized display label and optional help text; `name` remains the stable identifier. */
+  readonly labels?: import("./registry-config.ts").LocalizedText;
+  readonly helpText?: import("./registry-config.ts").LocalizedText;
   readonly type: "text" | "integer" | "decimal" | "date" | "boolean";
   readonly nullable: boolean;
   /** Whether an intake command may set the field when the case is created. */

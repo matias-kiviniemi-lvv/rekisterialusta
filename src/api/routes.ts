@@ -25,6 +25,7 @@ import { submitForm, decidePending } from "../services/forms.ts";
 import { dialectFor } from "../db/dialect.ts";
 import { categoryBelongsToRegistry } from "../config/validation.ts";
 import { appendAudit, appendOutbox } from "../domain/audit.ts";
+import { DEFAULT_LOCALE_CONFIG, resolveRequestedLocale } from "../config/localization.ts";
 
 export type { ApiRequest, ApiResponse, ApiHandler } from "./http-types.ts";
 
@@ -270,54 +271,94 @@ const postPendingDecision: ApiHandler = async (platform, req) => {
 
 // ---- registry list + meta (for the UI) -------------------------------------
 
+function requestLocale(req: ApiRequest): string {
+  const accepted = (req.acceptLanguage ?? "").split(",").map((item) => item.split(";")[0]?.trim()).filter((item): item is string => !!item);
+  return resolveRequestedLocale([req.query.get("lang"), ...accepted], DEFAULT_LOCALE_CONFIG);
+}
+
+function localizedHeaders(locale: string): Readonly<Record<string, string>> {
+  return { "Content-Language": locale, "Vary": "Accept-Language" };
+}
+
+function translationMap(rows: readonly Record<string, unknown>[], idColumn: string, valueColumn: string): Map<string, Map<string, string>> {
+  const result = new Map<string, Map<string, string>>();
+  for (const row of rows) {
+    const id = String(row[idColumn]);
+    const values = result.get(id) ?? new Map<string, string>();
+    values.set(String(row.locale), String(row[valueColumn]));
+    result.set(id, values);
+  }
+  return result;
+}
+
+function pick(values: Map<string, string> | undefined, legacy: string, locale: string, fallbacks: Set<string>): string {
+  const exact = values?.get(locale);
+  if (exact) return exact;
+  const source = values?.get("fi") ?? legacy;
+  if (locale !== "fi") fallbacks.add("fi");
+  return source;
+}
+
 const getRegistries: ApiHandler = async (platform, req) => {
+  const locale = requestLocale(req);
+  const fallbacks = new Set<string>();
+  const translations = translationMap(await platform.shared.all("SELECT registry_id, locale, name FROM registry_translations"), "registry_id", "name");
   const tokenRegistry = req.principal.kind === "token" ? req.principal.scope.registryId : undefined;
-  const visible = tokenRegistry
-    ? platform.allRegistries().filter((h) => h.def.registryId === tokenRegistry)
-    : platform.allRegistries();
-  const list = visible.map((h) => ({ registryId: h.def.registryId, name: h.def.name, diaryCode: h.def.diary.registryCode }));
-  return { status: 200, body: { registries: list } };
+  const visible = tokenRegistry ? platform.allRegistries().filter((h) => h.def.registryId === tokenRegistry) : platform.allRegistries();
+  const list = visible.map((h) => ({
+    registryId: h.def.registryId,
+    name: pick(translations.get(h.def.registryId), h.def.name, locale, fallbacks),
+    diaryCode: h.def.diary.registryCode,
+  }));
+  return { status: 200, headers: localizedHeaders(locale), body: { locale, fallbackLocales: [...fallbacks], registries: list } };
 };
 
 const getMeta: ApiHandler = async (platform, req) => {
   const h = platform.registry(req.params.registry!);
   if (!h) return { status: 404, body: { error: "unknown registry" } };
-  if (req.principal.kind === "token" && (
-    req.principal.scope.registryId !== h.def.registryId || !tokenAllows(req.principal.scope, "GET", "meta")
-  )) return { status: 403, body: { error: "forbidden" } };
+  if (req.principal.kind === "token" && (req.principal.scope.registryId !== h.def.registryId || !tokenAllows(req.principal.scope, "GET", "meta"))) return { status: 403, body: { error: "forbidden" } };
+  const locale = requestLocale(req);
+  const fallbacks = new Set<string>();
+  const includeTranslations = req.query.get("include")?.split(",").includes("translations") === true;
+  const isAdmin = req.principal.kind === "actor" && req.principal.actor.kind === "worker" && !!(await platform.shared.get("SELECT 1 AS ok FROM workers WHERE worker_id = ? AND is_admin = 1", [req.principal.actor.workerId]));
+  if (includeTranslations && !isAdmin) return { status: 403, body: { error: "translations require admin authorization" } };
   const isWorker = req.principal.kind === "actor" && req.principal.actor.kind === "worker";
   const isCustomer = req.principal.kind === "actor" && req.principal.actor.kind === "customer";
   const projectionMetadata = req.principal.kind === "public" || (req.principal.kind === "token" && req.principal.scope.publishedOnly);
-  const states = (await h.db.all("SELECT id, name, is_open, is_waiting_for_customer FROM states")).map((r) => ({ id: String(r.id), name: String(r.name), isOpen: Number(r.is_open) === 1, isWaitingForCustomer: Number(r.is_waiting_for_customer) === 1 }));
+
+  const stateNames = translationMap(await h.db.all("SELECT state_id, locale, name FROM state_translations"), "state_id", "name");
+  const states = (await h.db.all("SELECT id, name, is_open, is_waiting_for_customer FROM states")).map((r) => ({
+    id: String(r.id), name: pick(stateNames.get(String(r.id)), String(r.name), locale, fallbacks),
+    isOpen: Number(r.is_open) === 1, isWaitingForCustomer: Number(r.is_waiting_for_customer) === 1,
+    ...(includeTranslations ? { translations: Object.fromEntries(stateNames.get(String(r.id)) ?? []) } : {}),
+  }));
   const transitions = (await h.db.all("SELECT from_state, to_state FROM state_transitions")).map((r) => ({ from: String(r.from_state), to: String(r.to_state) }));
+  const formNames = translationMap(await platform.shared.all("SELECT ft.form_id, ft.locale, ft.title FROM form_translations ft JOIN form_definitions f ON f.form_id = ft.form_id WHERE f.registry_id = ?", [h.def.registryId]), "form_id", "title");
   const forms = (await platform.shared.all("SELECT form_id, kind, audience, title, requires_approval, field_subset, property_schema, allow_attachments, operation_type FROM form_definitions WHERE registry_id = ? AND active = 1", [h.def.registryId])).map((r) => ({
-    formId: String(r.form_id), kind: String(r.kind), audience: String(r.audience), title: String(r.title),
-    requiresApproval: Number(r.requires_approval) === 1,
-    fieldSubset: r.field_subset ? JSON.parse(String(r.field_subset)) : null,
-    propertySchema: r.property_schema ? JSON.parse(String(r.property_schema)) : null,
-    allowAttachments: Number(r.allow_attachments) === 1,
+    formId: String(r.form_id), kind: String(r.kind), audience: String(r.audience), title: pick(formNames.get(String(r.form_id)), String(r.title), locale, fallbacks),
+    requiresApproval: Number(r.requires_approval) === 1, fieldSubset: r.field_subset ? JSON.parse(String(r.field_subset)) : null,
+    propertySchema: r.property_schema ? JSON.parse(String(r.property_schema)) : null, allowAttachments: Number(r.allow_attachments) === 1,
     operationType: r.operation_type === null ? null : String(r.operation_type),
+    ...(includeTranslations ? { translations: Object.fromEntries(formNames.get(String(r.form_id)) ?? []) } : {}),
   }));
-  const categories = (await platform.shared.all("SELECT display_code, name FROM categories WHERE active = 1 ORDER BY display_code"))
-    .map((r) => ({ code: String(r.display_code), name: String(r.name) }))
+  const categoryNames = translationMap(await platform.shared.all("SELECT category_id, locale, name FROM category_translations"), "category_id", "name");
+  const categories = (await platform.shared.all("SELECT category_id, display_code, name FROM categories WHERE active = 1 ORDER BY display_code"))
+    .map((r) => ({ code: String(r.display_code), name: pick(categoryNames.get(String(r.category_id)), String(r.name), locale, fallbacks), ...(includeTranslations ? { translations: Object.fromEntries(categoryNames.get(String(r.category_id)) ?? []) } : {}) }))
     .filter((category) => categoryBelongsToRegistry(h.def, category.code));
-  const visibleFields = h.def.fields.filter((field) =>
-    projectionMetadata ? field.publicationEligible : isCustomer ? field.writableOnCreate || field.writableOnUpdate : true,
-  );
-  const fields = isWorker ? visibleFields : visibleFields.map((field) => ({
-    name: field.name, type: field.type, nullable: field.nullable,
-    writableOnCreate: field.writableOnCreate, writableOnUpdate: field.writableOnUpdate,
-    publicationEligible: field.publicationEligible,
+  const fieldNames = translationMap(await platform.shared.all("SELECT field_name, locale, label FROM field_translations WHERE registry_id = ?", [h.def.registryId]), "field_name", "label");
+  const visibleFields = h.def.fields.filter((field) => projectionMetadata ? field.publicationEligible : isCustomer ? field.writableOnCreate || field.writableOnUpdate : true);
+  const fields = visibleFields.map((field) => ({
+    ...(isWorker ? field : { name: field.name, type: field.type, nullable: field.nullable, writableOnCreate: field.writableOnCreate, writableOnUpdate: field.writableOnUpdate, publicationEligible: field.publicationEligible }),
+    label: pick(fieldNames.get(field.name), field.name, locale, fallbacks),
+    ...(includeTranslations ? { translations: Object.fromEntries(fieldNames.get(field.name) ?? []) } : {}),
   }));
+  const registryNames = translationMap(await platform.shared.all("SELECT registry_id, locale, name FROM registry_translations WHERE registry_id = ?", [h.def.registryId]), "registry_id", "name");
   const visibleForms = isWorker ? forms : isCustomer ? forms.filter((form) => form.audience === "customer") : [];
-  return {
-    status: 200,
-    body: {
-      registryId: h.def.registryId, name: h.def.name, fields, states,
-      initialState: h.def.initialState,
-      transitions: isWorker ? transitions : [], forms: visibleForms, categories,
-    },
-  };
+  return { status: 200, headers: localizedHeaders(locale), body: {
+    locale, fallbackLocales: [...fallbacks], registryId: h.def.registryId,
+    name: pick(registryNames.get(h.def.registryId), h.def.name, locale, fallbacks), fields, states,
+    initialState: h.def.initialState, transitions: isWorker ? transitions : [], forms: visibleForms, categories,
+  } };
 };
 
 // ---- worker portal ---------------------------------------------------------

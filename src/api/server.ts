@@ -28,6 +28,7 @@ export interface RawRequest {
   readonly authorization?: string | undefined;
   readonly body: unknown;
   readonly correlationId?: string;
+  readonly acceptLanguage?: string | undefined;
   readonly trustZone?: TrustZone;
 }
 
@@ -56,6 +57,7 @@ export async function dispatch(platform: Platform, raw: RawRequest): Promise<Api
     body: raw.body,
     principal,
     correlationId: raw.correlationId ?? randomUUID(),
+    acceptLanguage: raw.acceptLanguage,
   };
   try {
     return await matched.route.handler(platform, req);
@@ -135,6 +137,7 @@ export function createServer(platform: Platform, logger: HttpLogger = defaultHtt
         authorization: httpReq.headers["authorization"],
         body,
         correlationId: typeof httpReq.headers["x-correlation-id"] === "string" ? httpReq.headers["x-correlation-id"] : randomUUID(),
+        acceptLanguage: typeof httpReq.headers["accept-language"] === "string" ? httpReq.headers["accept-language"] : undefined,
         trustZone: options.trustZone ?? "combined",
       });
       logApiResult(logger, method, httpReq.url ?? "/", result);
@@ -159,6 +162,6 @@ function writeJson(res: ServerResponse, result: ApiResponse): void {
   // keys are well within Number's safe range). Handlers already convert on the
   // hot paths — this is a defensive net so no bigint ever crashes a response.
   const payload = JSON.stringify(result.body, (_k, v) => (typeof v === "bigint" ? Number(v) : v));
-  res.writeHead(result.status, { "content-type": "application/json" });
+  res.writeHead(result.status, { "content-type": "application/json", ...result.headers });
   res.end(payload);
 }

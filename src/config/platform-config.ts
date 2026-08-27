@@ -9,16 +9,17 @@ import { PERMIT_CONFIG } from "./registries/permit.ts";
 import { GRANT_CONFIG } from "./registries/grant.ts";
 
 export const PLATFORM_CONFIG: PlatformConfig = {
+  locales: { supported: ["fi"], default: "fi" },
   categories: [
     // Environment / permits
-    { code: "105", name: "Environment" },
-    { code: "105.04", name: "Water permits" },
-    { code: "105.04.03", name: "Small water permits" },
-    { code: "200", name: "Building" },
+    { code: "105", name: "Environment", labels: { sourceLocale: "fi", values: { fi: "Ympäristö" } } },
+    { code: "105.04", name: "Water permits", labels: { sourceLocale: "fi", values: { fi: "Vesiluvat" } } },
+    { code: "105.04.03", name: "Small water permits", labels: { sourceLocale: "fi", values: { fi: "Pienet vesiluvat" } } },
+    { code: "200", name: "Building", labels: { sourceLocale: "fi", values: { fi: "Rakentaminen" } } },
     // Grants
-    { code: "300", name: "Grants" },
-    { code: "300.01", name: "Culture grants" },
-    { code: "300.02", name: "Sport grants" },
+    { code: "300", name: "Grants", labels: { sourceLocale: "fi", values: { fi: "Avustukset" } } },
+    { code: "300.01", name: "Culture grants", labels: { sourceLocale: "fi", values: { fi: "Kulttuuriavustukset" } } },
+    { code: "300.02", name: "Sport grants", labels: { sourceLocale: "fi", values: { fi: "Liikunta-avustukset" } } },
   ],
 };
 

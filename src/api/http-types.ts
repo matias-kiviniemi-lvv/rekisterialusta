@@ -12,11 +12,13 @@ export interface ApiRequest {
   readonly body: unknown;
   readonly principal: Principal;
   readonly correlationId: string;
+  readonly acceptLanguage?: string | undefined;
 }
 
 export interface ApiResponse {
   readonly status: number;
   readonly body: unknown;
+  readonly headers?: Readonly<Record<string, string>>;
 }
 
 export type ApiHandler = (platform: Platform, req: ApiRequest) => Promise<ApiResponse>;

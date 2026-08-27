@@ -2,6 +2,7 @@ import type { RegistryConfig, RuleConfig } from "./registry-config.ts";
 import type { RegistryFieldDef } from "./registry-catalog.ts";
 import type { Condition } from "../domain/rule-types.ts";
 import { isWithin, normalizePath } from "../domain/categories.ts";
+import { validateLocalizedText } from "./localization.ts";
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -17,6 +18,8 @@ function assertGovernedField(field: RegistryFieldDef): void {
   if (!new Set(["public", "normal", "sensitive", "restricted"]).has(field.sensitivity)) {
     throw new Error(`field ${field.name} has invalid sensitivity`);
   }
+  if (field.labels) validateLocalizedText(field.labels, `field ${field.name} label`);
+  if (field.helpText) validateLocalizedText(field.helpText, `field ${field.name} help text`);
 }
 
 function assertCondition(condition: Condition | undefined, fields: ReadonlySet<string>, roots: readonly string[]): void {
@@ -68,6 +71,7 @@ function assertRule(rule: RuleConfig, fields: ReadonlyMap<string, RegistryFieldD
 export function validateRegistryConfig(config: RegistryConfig): void {
   if (!config.registryId.trim()) throw new Error("registryId is required");
   if (!config.name.trim()) throw new Error(`registry ${config.registryId} requires a name`);
+  if (config.labels) validateLocalizedText(config.labels, `registry ${config.registryId} label`);
   if (!config.database.trim()) throw new Error(`registry ${config.registryId} requires a database key`);
   if (!config.diary.registryCode.trim() || config.diary.registryCode.length > 30) throw new Error("invalid diary registry code");
   if (!Number.isSafeInteger(config.diary.numberPadding) || config.diary.numberPadding < 1 || config.diary.numberPadding > 12) throw new Error("invalid diary number padding");
@@ -89,6 +93,10 @@ export function validateRegistryConfig(config: RegistryConfig): void {
 
   const states = new Set(config.states.map((s) => s.id));
   if (states.size !== config.states.length) throw new Error("duplicate state id");
+  for (const state of config.states) {
+    if (state.labels) validateLocalizedText(state.labels, `state ${state.id} label`);
+    if (state.descriptions) validateLocalizedText(state.descriptions, `state ${state.id} description`);
+  }
   for (const [from, to] of config.transitions) {
     if (!states.has(from) || !states.has(to)) throw new Error(`transition ${from} -> ${to} references unknown state`);
   }
@@ -96,6 +104,8 @@ export function validateRegistryConfig(config: RegistryConfig): void {
   for (const form of config.forms ?? []) {
     if (!form.formId.trim() || formIds.has(form.formId)) throw new Error(`invalid or duplicate form id ${form.formId}`);
     formIds.add(form.formId);
+    if (form.titles) validateLocalizedText(form.titles, `form ${form.formId} title`);
+    if (form.descriptions) validateLocalizedText(form.descriptions, `form ${form.formId} description`);
     if (form.fieldSubset) {
       for (const name of form.fieldSubset) if (!names.has(name)) throw new Error(`form ${form.formId} references unknown field ${name}`);
     }
