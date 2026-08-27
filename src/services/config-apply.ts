@@ -100,13 +100,28 @@ export async function applyRegistryConfig(
     }
   });
 
-  // 5) Forms + rules (shared config), keyed by id, replaced for this registry.
+  // 5) Forms + rules (shared config), keyed by id. Upsert configured forms so
+  //    multilingual child rows survive a reapply, then remove only stale forms.
+  //    Translation rows reference forms in multilingual deployments, so stale
+  //    dependants must be removed before their parent definitions. The table is
+  //    optional for compatibility with databases predating multilingual support.
+  const hasFormTranslations = await tableExists(shared, "form_translations");
+  const forms = config.forms ?? [];
+  const retainedFormIds = forms.map((form) => form.formId);
+  const retainedClause = retainedFormIds.length
+    ? ` AND form_id NOT IN (${retainedFormIds.map(() => "?").join(", ")})`
+    : "";
+  const staleFormParams = [config.registryId, ...retainedFormIds];
+  const formSql = ds.upsert({
+    table: "form_definitions",
+    insertColumns: ["form_id", "registry_id", "kind", "audience", "title", "requires_approval", "field_subset", "property_schema", "allow_attachments", "operation_type"],
+    conflictColumns: ["form_id"],
+    updateColumns: ["registry_id", "kind", "audience", "title", "requires_approval", "field_subset", "property_schema", "allow_attachments", "operation_type"],
+  });
   await shared.transaction(async (tx) => {
-    await tx.run("DELETE FROM form_definitions WHERE registry_id = ?", [config.registryId]);
-    for (const f of config.forms ?? []) {
+    for (const f of forms) {
       await tx.run(
-        `INSERT INTO form_definitions (form_id, registry_id, kind, audience, title, requires_approval, field_subset, property_schema, allow_attachments, operation_type)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        formSql,
         [
           f.formId, config.registryId, f.kind, f.audience, f.title,
           f.requiresApproval ? 1 : 0,
@@ -117,6 +132,16 @@ export async function applyRegistryConfig(
         ],
       );
     }
+    if (hasFormTranslations) {
+      await tx.run(
+        `DELETE FROM form_translations
+         WHERE form_id IN (
+           SELECT form_id FROM form_definitions WHERE registry_id = ?${retainedClause}
+         )`,
+        staleFormParams,
+      );
+    }
+    await tx.run(`DELETE FROM form_definitions WHERE registry_id = ?${retainedClause}`, staleFormParams);
     await tx.run("DELETE FROM rules WHERE registry_id = ?", [config.registryId]);
     for (const r of config.rules ?? []) {
       await tx.run(

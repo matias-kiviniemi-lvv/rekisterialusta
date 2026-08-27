@@ -6,7 +6,7 @@ import { migrate } from "../src/migrations/runner.ts";
 import { m0001 } from "../src/migrations/0001_shared_schema.ts";
 import { m0003 } from "../src/migrations/0003_api_forms_rules.ts";
 import { m0005 } from "../src/migrations/0005_admin_exports.ts";
-import { applyPlatformConfig } from "../src/services/config-apply.ts";
+import { applyPlatformConfig, applyRegistryConfig } from "../src/services/config-apply.ts";
 import { PLATFORM_CONFIG } from "../src/config/platform-config.ts";
 import { PERMIT_CONFIG } from "../src/config/registries/permit.ts";
 import { exportRegistryConfig, promoteRegistry } from "../src/services/config-promote.ts";
@@ -53,4 +53,38 @@ test("promoting a registry config to a fresh environment reproduces its behavior
   assert.match(created.diaryNumber, /^GRANT-2026-\d{6}$/);
   await changeState(targetGrantDb, { caseKey: created.caseKey, toState: "under_review", actorKind: "system" }, NOW);
   assert.equal(String((await targetGrantDb.get("SELECT state FROM cases WHERE case_key = ?", [created.caseKey]))?.state), "under_review");
+});
+
+test("reapplying config preserves translations while replacing form definitions", async () => {
+  const { platform } = await buildSamplePlatform(fixedClock(NOW));
+  await platform.shared.run(`
+    CREATE TABLE form_translations (
+      form_id TEXT NOT NULL REFERENCES form_definitions(form_id),
+      locale TEXT NOT NULL,
+      title TEXT NOT NULL,
+      PRIMARY KEY (form_id, locale)
+    )
+  `);
+  const form = await platform.shared.get(
+    "SELECT form_id FROM form_definitions WHERE registry_id = ? LIMIT 1",
+    [PERMIT_CONFIG.registryId],
+  );
+  assert.ok(form);
+  await platform.shared.run(
+    "INSERT INTO form_translations (form_id, locale, title) VALUES (?, ?, ?)",
+    [String(form.form_id), "sv", "Översättning"],
+  );
+
+  const registryDb = platform.registry(PERMIT_CONFIG.registryId)?.db;
+  assert.ok(registryDb);
+  await applyRegistryConfig(platform.shared, registryDb, PERMIT_CONFIG, NOW);
+
+  assert.equal(
+    Number((await platform.shared.get("SELECT COUNT(*) AS n FROM form_translations"))?.n),
+    1,
+  );
+  assert.equal(
+    Number((await platform.shared.get("SELECT COUNT(*) AS n FROM form_definitions WHERE registry_id = ?", [PERMIT_CONFIG.registryId]))?.n),
+    PERMIT_CONFIG.forms?.length ?? 0,
+  );
 });
