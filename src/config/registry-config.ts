@@ -17,11 +17,19 @@ import type { Condition } from "../domain/rule-types.ts";
 export interface CategoryDef {
   readonly code: string; // e.g. "105.04.03"
   readonly name: string;
+  readonly labels?: LocalizedText;
+}
+
+export interface LocalizedText {
+  readonly sourceLocale: string;
+  readonly values: Readonly<Record<string, string>>;
 }
 
 export interface StateDef {
   readonly id: string;
   readonly name: string;
+  readonly labels?: LocalizedText;
+  readonly descriptions?: LocalizedText;
   readonly isOpen: boolean;
   readonly isWaitingForCustomer: boolean;
 }
@@ -33,6 +41,8 @@ export interface FormConfig {
   readonly kind: "case" | "operation";
   readonly audience: "worker" | "customer";
   readonly title: string;
+  readonly titles?: LocalizedText;
+  readonly descriptions?: LocalizedText;
   readonly requiresApproval?: boolean;
   readonly fieldSubset?: readonly string[];
   readonly propertySchema?: ObjectSchema;
@@ -52,6 +62,7 @@ export interface RuleConfig {
 export interface RegistryConfig {
   readonly registryId: string;
   readonly name: string;
+  readonly labels?: LocalizedText;
   readonly database: string;
   readonly diary: DiaryFormat;
   readonly initialState: string;
@@ -68,4 +79,10 @@ export interface RegistryConfig {
 /** Platform-wide configuration shared by all registries (the category registry). */
 export interface PlatformConfig {
   readonly categories: readonly CategoryDef[];
+  readonly locales?: LocaleConfig;
+}
+
+export interface LocaleConfig {
+  readonly supported: readonly string[];
+  readonly default: string;
 }
