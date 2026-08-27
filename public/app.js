@@ -31,6 +31,7 @@ const state = {
   tab: "customer",
   workerView: "assigned",
   mgmtSection: "fields", // active Management sub-tab
+  customerCreating: false,
   open: { customer: null, worker: null, publishing: null },
 };
 
@@ -169,17 +170,16 @@ async function renderCustomer(v) {
     v.append(h("div", { class: "hint" }, "Switch “Acting as” to Citizen One or Two to use this portal."));
   }
 
-  const bar = h("div", { class: "inline", style: "margin-bottom:14px" },
-    h("button", { class: "btn", onclick: () => showNewCaseForm(v) }, "+ Start a new case"),
-    h("button", { class: "btn ghost sm", onclick: () => render() }, "Refresh"));
-  v.append(bar);
-
-  const listCard = h("div", { class: "card" }, h("h3", null, "My cases"));
+  const listCard = h("div", { class: "card" }, h("h3", null, t("customer.myCases")));
   v.append(listCard);
+  if (state.customerCreating) { showNewCaseForm(listCard); return; }
   const r = await api("GET", `/api/registries/${state.registry}/my-cases`);
   if (r.status !== 200) { listCard.append(h("div", { class: "hint" }, "Sign in as a customer to see your cases.")); }
   else if (!r.data.cases.length) listCard.append(h("div", { class: "empty" }, "No cases yet. Start one above."));
   else listCard.append(caseTable(m, r.data.cases, (c) => { state.open.customer = c.diaryNumber; renderCustomer(v).catch(console.error); }));
+  listCard.append(h("div", { class: "list-actions inline" },
+    h("button", { class: "btn", onclick: () => { state.customerCreating = true; renderCustomer(v); } }, t("customer.start")),
+    h("button", { class: "btn ghost", onclick: () => renderCustomer(v) }, t("common.refresh"))));
 
   if (state.open.customer) v.append(await caseDetailCard("customer", state.open.customer));
 }
@@ -187,20 +187,20 @@ async function renderCustomer(v) {
 function showNewCaseForm(v) {
   const m = meta();
   const initial = m.states[0];
-  const form = h("div", { class: "card" },
-    h("h3", null, "Start a new case"),
-    h("div", { class: "field" }, h("label", null, "Category"), categorySelect()),
+  const form = h("div", { class: "list-form" },
+    h("h3", null, t("customer.newTitle")),
+    h("div", { class: "field" }, h("label", null, t("field.category")), categorySelect()),
     ...m.fields.map((f) => h("div", { class: "field" },
       h("label", null, f.name, f.nullable ? "" : h("span", { class: "req" }, " *")), fieldInput(f))),
     h("p", { class: "sub" }, t("customer.initialState", { state: initial.name })),
-    h("button", { class: "btn", onclick: async () => {
+    h("div", { class: "inline" }, h("button", { class: "btn", onclick: async () => {
       const fields = {};
       for (const f of m.fields) { const val = readField(f); if (val !== undefined && val !== null) fields[f.name] = val; }
       const r = await api("POST", `/api/registries/${state.registry}/cases`, { category: $("#cat_sel").value, initialState: initial.id, fields });
-      if (ok(r, t("customer.created", { diary: r.data.diaryNumber }))) { state.open.customer = r.data.diaryNumber; renderCustomer($("#view")); }
-    } }, "Create case"));
+      if (ok(r, t("customer.created", { diary: r.data.diaryNumber }))) { state.customerCreating = false; state.open.customer = r.data.diaryNumber; renderCustomer($("#view")); }
+    } }, t("customer.create")),
+    h("button", { class: "btn ghost", onclick: () => { state.customerCreating = false; renderCustomer($("#view")); } }, t("common.cancel"))));
   v.append(form);
-  form.scrollIntoView({ behavior: "smooth" });
 }
 
 // ---- Worker portal ---------------------------------------------------------
@@ -214,9 +214,8 @@ async function renderWorker(v) {
   const views = [["assigned", "Assigned to me"], ["unassigned", "Unassigned (opted-in)"], ["authorized", "All authorized"]];
   const pills = h("div", { class: "pillbar" }, ...views.map(([k, label]) =>
     h("button", { class: state.workerView === k ? "active" : "", onclick: () => { state.workerView = k; renderWorker(v); } }, label)));
-  v.append(pills);
-
   const listCard = h("div", { class: "card" });
+  listCard.append(h("div", { class: "list-filters" }, pills));
   v.append(listCard);
   const r = await api("GET", `/api/registries/${state.registry}/worker/cases?view=${state.workerView}`);
   if (r.status !== 200) listCard.append(h("div", { class: "hint" }, "Worker authentication required."));
@@ -263,11 +262,12 @@ async function renderPublishing(v, newSearch = false) {
   const catInput = h("input", { id: "pub_cat", placeholder: "category prefix e.g. 105", style: "max-width:220px", value: keepCat });
   const scope = h("select", { id: "pub_scope" }, h("option", { value: "registry" }, "Current registry"), h("option", { value: "all" }, "All registries"));
   scope.value = keepScope;
-  v.append(h("form", {
-    class: "inline", style: "margin-bottom:14px",
+  const filters = h("form", {
+    class: "inline",
     onsubmit: (event) => { event.preventDefault(); renderPublishing(v, true); },
-  }, queryInput, catInput, scope, h("button", { class: "btn", type: "submit" }, "Search")));
-  const card = h("div", { class: "card" }, h("h3", null, "Published cases"));
+  }, queryInput, catInput, scope, h("button", { class: "btn", type: "submit" }, t("publishing.search")));
+  const card = h("div", { class: "card" }, h("h3", null, t("publishing.results")));
+  card.append(h("div", { class: "list-filters" }, filters));
   v.append(card);
   const params = new URLSearchParams();
   if (keepQuery) params.set("q", keepQuery);
@@ -325,12 +325,11 @@ function reManage() { renderManagement($("#view")).catch(console.error); }
 
 const MGMT_RENDERERS = {
   async fields(body, m) {
-    body.append(listCard("Current fields", [
-      { header: "Name", cls: "mono", get: (f) => f.name },
-      { header: "Type", get: (f) => f.type },
-      { header: "Nullable", get: (f) => (f.nullable ? "yes" : "no") },
-    ], m.fields, "No fields defined yet."));
-    body.append(h("div", { class: "row" }, manageCard("Add statutory field", [
+    selfContainedList(body, t("management.currentFields"), [
+      { header: t("management.name"), cls: "mono", get: (f) => f.name },
+      { header: t("management.type"), get: (f) => f.type },
+      { header: t("management.nullable"), get: (f) => f.nullable ? t("common.yes") : t("common.no") },
+    ], m.fields, t("management.noFields"), t("management.addField"), (cancel) => manageCard(t("management.addStatutoryField"), [
       ["name", h("input", { id: "af_name", placeholder: "e.g. coordinate" })],
       ["type", h("select", { id: "af_type" }, ...["text", "integer", "decimal", "date", "boolean"].map((t) => h("option", null, t)))],
       ["nullable", h("select", { id: "af_null" }, h("option", { value: "true" }, "true"), h("option", { value: "false" }, "false"))],
@@ -350,17 +349,16 @@ const MGMT_RENDERERS = {
         retentionPolicy: $("#af_retention").value,
       });
       if (ok(r, `Field added → config v${r.data.version}`)) { await refreshMeta(); reManage(); }
-    }, "Add field (schema migration)")));
+    }, "Add field (schema migration)", cancel));
   },
 
   async states(body, m) {
-    body.append(listCard("Current states", [
+    selfContainedList(body, t("management.currentStates"), [
       { header: "ID", cls: "mono", get: (s) => s.id },
-      { header: "Name", get: (s) => s.name },
-      { header: "Open", get: (s) => (s.isOpen ? "open" : "closed") },
-      { header: "Waiting", get: (s) => (s.isWaitingForCustomer ? "waiting for customer" : "—") },
-    ], m.states, "No states defined yet."));
-    body.append(h("div", { class: "row" }, manageCard("Add state", [
+      { header: t("management.name"), get: (s) => s.name },
+      { header: t("management.open"), get: (s) => s.isOpen ? t("management.openValue") : t("management.closedValue") },
+      { header: t("management.waiting"), get: (s) => s.isWaitingForCustomer ? t("management.waitingValue") : "—" },
+    ], m.states, t("management.noStates"), t("management.addState"), (cancel) => manageCard(t("management.addState"), [
       ["id", h("input", { id: "as_id", placeholder: "e.g. appealed" })],
       ["name", h("input", { id: "as_name", placeholder: "Appealed" })],
       ["open", h("select", { id: "as_open" }, h("option", { value: "true" }, "open"), h("option", { value: "false" }, "closed"))],
@@ -368,49 +366,46 @@ const MGMT_RENDERERS = {
     ], async () => {
       const r = await api("POST", `/api/admin/registries/${state.registry}/states`, { id: $("#as_id").value, name: $("#as_name").value, isOpen: $("#as_open").value === "true", isWaitingForCustomer: $("#as_wait").value === "true" });
       if (ok(r, `State added → config v${r.data.version}`)) { await refreshMeta(); reManage(); }
-    }, "Add state")));
+    }, "Add state", cancel));
   },
 
   async transitions(body, m) {
     const nameOf = (id) => (m.states.find((x) => x.id === id) || {}).name || id;
-    body.append(listCard("Current transitions", [
-      { header: "From", get: (t) => nameOf(t.from) },
+    selfContainedList(body, t("management.currentTransitions"), [
+      { header: t("management.from"), get: (t) => nameOf(t.from) },
       { header: "", get: () => "→" },
-      { header: "To", get: (t) => nameOf(t.to) },
-    ], m.transitions, "No transitions defined yet."));
-    body.append(h("div", { class: "row" }, manageCard("Add transition", [
+      { header: t("management.to"), get: (t) => nameOf(t.to) },
+    ], m.transitions, t("management.noTransitions"), t("management.addTransition"), (cancel) => manageCard(t("management.addTransition"), [
       ["from", stateSelect("at_from")],
       ["to", stateSelect("at_to")],
     ], async () => {
       const r = await api("POST", `/api/admin/registries/${state.registry}/transitions`, { from: $("#at_from").value, to: $("#at_to").value });
       if (ok(r, `Transition added → config v${r.data.version}`)) { await refreshMeta(); reManage(); }
-    }, "Add transition")));
+    }, "Add transition", cancel));
   },
 
   async categories(body, m) {
-    body.append(listCard("Current categories (platform-wide)", [
-      { header: "Code", cls: "mono", get: (c) => c.code },
-      { header: "Name", get: (c) => c.name },
-    ], m.categories, "No categories defined yet."));
-    body.append(h("div", { class: "row" }, manageCard("Add category", [
+    selfContainedList(body, t("management.currentCategories"), [
+      { header: t("management.code"), cls: "mono", get: (c) => c.code },
+      { header: t("management.name"), get: (c) => c.name },
+    ], m.categories, t("management.noCategories"), t("management.addCategory"), (cancel) => manageCard(t("management.addCategory"), [
       ["code", h("input", { id: "ac_code", placeholder: "e.g. 105.04.09" })],
       ["name", h("input", { id: "ac_name", placeholder: "Name" })],
     ], async () => {
       const r = await api("POST", `/api/admin/categories`, { code: $("#ac_code").value, name: $("#ac_name").value });
       if (ok(r, "Category added")) { await refreshMeta(); reManage(); }
-    }, "Add category")));
+    }, "Add category", cancel));
   },
 
   async forms(body, m) {
-    body.append(listCard("Current forms", [
-      { header: "Form ID", cls: "mono", get: (f) => f.formId },
-      { header: "Kind", get: (f) => f.kind },
-      { header: "Audience", get: (f) => f.audience },
-      { header: "Title", get: (f) => f.title },
-      { header: "Approval", get: (f) => (f.requiresApproval ? "required" : "—") },
-      { header: "Attach", get: (f) => (f.allowAttachments ? "yes" : "—") },
-    ], m.forms, "No forms defined yet."));
-    body.append(formCreateCard(m));
+    selfContainedList(body, t("management.currentForms"), [
+      { header: t("management.formId"), cls: "mono", get: (f) => f.formId },
+      { header: t("management.kind"), get: (f) => f.kind },
+      { header: t("management.audience"), get: (f) => f.audience },
+      { header: t("management.titleColumn"), get: (f) => f.title },
+      { header: t("management.approval"), get: (f) => f.requiresApproval ? t("management.required") : "—" },
+      { header: t("management.attachments"), get: (f) => f.allowAttachments ? t("common.yes") : "—" },
+    ], m.forms, t("management.noForms"), t("management.createForm"), (cancel) => formCreateCard(m, cancel));
   },
 
   async rules(body) {
@@ -478,7 +473,7 @@ const MGMT_RENDERERS = {
 
 // ---- Management create forms (Forms + Rules) -------------------------------
 
-function formCreateCard(m) {
+function formCreateCard(m, onCancel) {
   const fieldChecks = m.fields.map((f) => h("label", { class: "inline" }, h("input", { type: "checkbox", "data-fs": f.name }), f.name));
   return h("div", { class: "card" },
     h("h3", null, "Create form"),
@@ -493,7 +488,9 @@ function formCreateCard(m) {
     h("div", { class: "field" }, h("label", null, "Operation type — operation kind only, optional"), h("input", { id: "fm_optype", placeholder: "e.g. supplement" })),
     h("div", { class: "field" }, h("label", null, "Field subset — case kind; leave all unchecked to allow all fields"), h("div", { class: "inline wrap" }, ...(fieldChecks.length ? fieldChecks : [h("span", { class: "op-meta" }, "no fields defined")]))),
     h("div", { class: "field" }, h("label", null, "Property schema JSON — operation kind, optional"), h("textarea", { id: "fm_schema", rows: "5", placeholder: '{ "properties": { "reason": { "type": "string" } }, "required": ["reason"] }' })),
-    h("button", { class: "btn", onclick: submitForm }, "Create form"));
+    h("div", { class: "inline" },
+      h("button", { class: "btn", onclick: submitForm }, "Create form"),
+      h("button", { class: "btn ghost", onclick: onCancel }, t("common.cancel"))));
 }
 
 async function submitForm() {
@@ -544,11 +541,25 @@ async function submitRule() {
 
 // ---- Management shared building blocks -------------------------------------
 
-function manageCard(title, rows, onSubmit, btnLabel) {
+function manageCard(title, rows, onSubmit, btnLabel, onCancel) {
   return h("div", { class: "col card" },
     h("h3", null, title),
     ...rows.map(([label, input]) => h("div", { class: "field" }, h("label", null, label), input)),
-    h("button", { class: "btn", onclick: onSubmit }, btnLabel));
+    h("div", { class: "inline" },
+      h("button", { class: "btn", onclick: onSubmit }, btnLabel),
+      onCancel && h("button", { class: "btn ghost", onclick: onCancel }, t("common.cancel"))));
+}
+
+/** Render a list and its create operation as one component. The editor replaces the list until saved or cancelled. */
+function selfContainedList(body, title, cols, rows, emptyMsg, actionLabel, createForm) {
+  const card = listCard(title, cols, rows, emptyMsg);
+  const showList = () => reManage();
+  card.append(h("div", { class: "list-actions" },
+    h("button", { class: "btn", onclick: () => {
+      card.replaceChildren(createForm(showList));
+      card.classList.add("editing");
+    } }, actionLabel)));
+  body.append(card);
 }
 
 /** A card with a table of current items. `cols` = [{header, get, cls?}]. */
