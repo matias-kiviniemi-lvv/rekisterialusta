@@ -100,7 +100,7 @@ tr.click:hover { background: #f2f2ff; }
 .badge.open { color: var(--ok); border-color: var(--ok); background: #edf7f1; }
 .badge.closed { color: var(--muted); }
 .badge.waiting { color: var(--warn); border-color: #b27c13; background: #fff6df; }
-.badge.pub { color: #fff; border-color: var(--brand-green); background: var(--brand-green); }
+.badge.property { padding: 2px 8px; border-radius: 999px; color: #174f54; border-color: var(--brand-aqua); background: #e5f5f6; font-size: 11px; }
 button.btn { min-height: 42px; background: var(--brand-blue); color: #fff; border: 2px solid var(--brand-blue); border-radius: 2px; padding: 8px 16px; font: 700 14px var(--sans); cursor: pointer; }
 button.btn:hover { background: #2323aa; border-color: #2323aa; }
 button.btn.ghost { background: transparent; color: var(--brand-blue); border-color: var(--brand-blue); }
