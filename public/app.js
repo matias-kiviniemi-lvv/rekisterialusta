@@ -170,11 +170,6 @@ async function renderCustomer(v) {
     v.append(h("div", { class: "hint" }, "Switch “Acting as” to Citizen One or Two to use this portal."));
   }
 
-  const bar = h("div", { class: "inline", style: "margin-bottom:14px" },
-    h("button", { class: "btn", onclick: () => { state.customerCreating = true; renderCustomer(v); } }, `+ ${t("customer.newTitle")}`),
-    h("button", { class: "btn ghost sm", onclick: () => render() }, t("common.refresh")));
-  v.append(bar);
-
   const listCard = h("div", { class: "card" }, h("h3", null, t("customer.myCases")));
   v.append(listCard);
   if (state.customerCreating) { showNewCaseForm(listCard); return; }
