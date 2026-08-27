@@ -98,7 +98,7 @@ function stateBadge(m, stateId, isPublished) {
   const s = (m.states || []).find((x) => x.id === stateId) || { name: stateId };
   const cls = s.isWaitingForCustomer ? "waiting" : s.isOpen ? "open" : "closed";
   const els = [h("span", { class: "badge " + cls }, s.name || stateId)];
-  if (isPublished) els.push(" ", h("span", { class: "badge pub" }, t("status.published")));
+  if (isPublished) els.push(" ", h("span", { class: "badge property" }, t("status.published")));
   return els;
 }
 
