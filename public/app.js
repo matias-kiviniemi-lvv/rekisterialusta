@@ -7,7 +7,17 @@ import * as fiCatalog from "./locales/fi.js";
  * watch the two auth systems and admin gating behave differently per role.
  */
 
-const locale = resolveLocale({ query: location.search, stored: localStorage.getItem("locale"), languages: navigator.languages });
+function readStoredLocale() {
+  try { return localStorage.getItem("locale"); }
+  catch { return null; }
+}
+
+function storeLocale(value) {
+  try { localStorage.setItem("locale", value); }
+  catch { /* Locale persistence is optional (for example, in privacy-restricted contexts). */ }
+}
+
+const locale = resolveLocale({ query: location.search, stored: readStoredLocale(), languages: navigator.languages });
 const i18n = createI18n(locale, fiCatalog, (key) => console.warn(`[i18n] missing translation: ${key}`));
 const t = i18n.t;
 const ts = i18n.fromSource;
@@ -45,7 +55,9 @@ function h(tag, attrs, ...kids) {
     else if (v === true) e.setAttribute(k, "");
     else if (v !== false && v != null) e.setAttribute(k, v);
   }
-  for (const kid of kids.flat()) if (kid != null) e.append(kid.nodeType ? kid : document.createTextNode(ts(String(kid))));
+  // Callers translate known interface copy explicitly. Values from cases and
+  // registry configuration must always be rendered exactly as received.
+  for (const kid of kids.flat()) if (kid != null) e.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
   return e;
 }
 const $ = (sel) => document.querySelector(sel);
@@ -98,7 +110,7 @@ async function boot() {
   const language = $("#language");
   language.value = i18n.locale;
   language.addEventListener("change", () => {
-    localStorage.setItem("locale", language.value);
+    storeLocale(language.value);
     const url = new URL(location.href);
     url.searchParams.set("lang", language.value);
     location.assign(url);
@@ -577,7 +589,7 @@ function caseTable(m, cases, onOpen, extra) {
       h("td", { class: "mono" }, c.diaryNumber),
       h("td", { class: "mono" }, c.category),
       h("td", null, stateBadge(m, c.state, c.isPublished)),
-      h("td", null, h("button", { class: "btn sm ghost", onclick: (e) => { e.stopPropagation(); onOpen(c); } }, "Open")));
+      h("td", null, h("button", { class: "btn sm ghost", onclick: (e) => { e.stopPropagation(); onOpen(c); } }, t("common.open"))));
     if (extra) tr.append(h("td", null, extra.cell(c)));
     tb.append(tr);
   }

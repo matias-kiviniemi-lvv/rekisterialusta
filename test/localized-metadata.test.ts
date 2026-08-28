@@ -29,16 +29,24 @@ test("registry list and metadata expose resolved Finnish labels while retaining 
   const response = await dispatch(platform, { method: "GET", url: "/api/registries/permit/meta?lang=fi", authorization: "Bearer customer:c-1", body: undefined });
   const meta = response.body as { locale: string; fields: Array<{ name: string; label: string }>; states: Array<{ id: string; name: string }> };
   assert.equal(meta.locale, "fi");
-  assert.deepEqual(meta.fields.find((field) => field.name === "applicant_name"), { name: "applicant_name", type: "text", nullable: false, writableOnCreate: true, writableOnUpdate: false, publicationEligible: true, label: "Hakijan nimi" });
+  assert.deepEqual(meta.fields.find((field) => field.name === "applicant_name"), { name: "applicant_name", type: "text", nullable: false, writableOnCreate: true, writableOnUpdate: false, publicationEligible: true, label: "Hakijan nimi", helpText: null });
   assert.equal(meta.states.find((state) => state.id === "received")?.name, "Vastaanotettu");
 });
 
 test("complete translations are admin-only and promotion artifacts retain localized metadata", async () => {
-  const { platform, shared } = await buildSamplePlatform(fixedClock(NOW));
+  const { platform, shared, db } = await buildSamplePlatform(fixedClock(NOW));
+  await db.run("UPDATE state_translations SET description = ? WHERE state_id = ? AND locale = ?", ["Asia on vastaanotettu", "received", "fi"]);
+  await shared.run("UPDATE form_translations SET description = ? WHERE form_id = ? AND locale = ?", ["Täydennä asiaa", "update-site-address", "fi"]);
+  await shared.run("UPDATE field_translations SET help_text = ? WHERE registry_id = ? AND field_name = ? AND locale = ?", ["Kirjoita koko nimi", "permit", "applicant_name", "fi"]);
   const denied = await dispatch(platform, { method: "GET", url: "/api/registries/permit/meta?include=translations", authorization: "Bearer customer:c-1", body: undefined });
   assert.equal(denied.status, 403);
   const allowed = await dispatch(platform, { method: "GET", url: "/api/registries/permit/meta?include=translations", authorization: "Bearer worker:w-admin", body: undefined });
   assert.equal(allowed.status, 200);
+  const meta = allowed.body as { states: Array<Record<string, unknown>>; forms: Array<Record<string, unknown>>; fields: Array<Record<string, unknown>> };
+  assert.equal(meta.states.find((state) => state.id === "received")?.description, "Asia on vastaanotettu");
+  assert.deepEqual((meta.states.find((state) => state.id === "received")?.translations as Record<string, unknown>).fi, { name: "Vastaanotettu", description: "Asia on vastaanotettu" });
+  assert.equal(meta.forms.find((form) => form.formId === "update-site-address")?.description, "Täydennä asiaa");
+  assert.equal(meta.fields.find((field) => field.name === "applicant_name")?.helpText, "Kirjoita koko nimi");
   const artifact = await exportRegistryConfig(shared, "permit");
   assert.equal(artifact?.labels?.values.fi, "Luparekisteri");
   assert.equal(artifact?.fields[0]?.labels?.values.fi, "Hakijan nimi");
