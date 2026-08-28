@@ -44,6 +44,18 @@ test("dynamic DOM children are not implicitly translated", () => {
   assert.match(app, /t\("common\.open"\)/);
 });
 
+test("programmatically rendered portal chrome uses explicit translations", () => {
+  const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+  for (const key of [
+    "customer.title", "customer.subtitle", "customer.switchHint",
+    "worker.title", "worker.subtitle", "worker.switchHint",
+    "publishing.title", "publishing.subtitle", "management.title", "management.subtitle",
+    "table.diary", "table.category", "table.state", "case.history",
+  ]) {
+    assert.match(app, new RegExp(`\\bt\\("${key.replaceAll(".", "\\.")}\"\\)`));
+  }
+});
+
 test("locale storage failures are isolated from application startup", () => {
   const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
   assert.match(app, /function readStoredLocale\(\) \{\s*try \{ return localStorage\.getItem\("locale"\); \}\s*catch \{ return null; \}/);
