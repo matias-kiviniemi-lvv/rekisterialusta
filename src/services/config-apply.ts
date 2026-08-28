@@ -79,6 +79,16 @@ export async function applyRegistryConfig(
   // 2) Forward-only field evolution: add any config field missing as a column.
   const addedColumns = await addMissingFieldColumns(regDb, config);
 
+  // Form IDs are global keys in the shared database. Never let an upsert or a
+  // replacement apply move a definition (and its translations) between
+  // registries merely because two independently authored configs reuse an ID.
+  for (const form of config.forms ?? []) {
+    const owner = await shared.get("SELECT registry_id FROM form_definitions WHERE form_id = ?", [form.formId]);
+    if (owner && String(owner.registry_id) !== config.registryId) {
+      throw new Error(`form ${form.formId} belongs to registry ${String(owner.registry_id)}`);
+    }
+  }
+
   // 3) Upsert catalog (shared).
   await shared.run(
     ds.upsert({

@@ -291,6 +291,19 @@ function translationMap(rows: readonly Record<string, unknown>[], idColumn: stri
   return result;
 }
 
+function completeTranslations(
+  rows: readonly Record<string, unknown>[], idColumn: string, columns: readonly string[],
+): Map<string, Map<string, Record<string, string | null>>> {
+  const result = new Map<string, Map<string, Record<string, string | null>>>();
+  for (const row of rows) {
+    const id = String(row[idColumn]);
+    const locales = result.get(id) ?? new Map<string, Record<string, string | null>>();
+    locales.set(String(row.locale), Object.fromEntries(columns.map((column) => [column, row[column] == null ? null : String(row[column])])));
+    result.set(id, locales);
+  }
+  return result;
+}
+
 function pick(values: Map<string, string> | undefined, legacy: string, locale: string, fallbacks: Set<string>): string {
   const exact = values?.get(locale);
   if (exact) return exact;
@@ -326,31 +339,43 @@ const getMeta: ApiHandler = async (platform, req) => {
   const isCustomer = req.principal.kind === "actor" && req.principal.actor.kind === "customer";
   const projectionMetadata = req.principal.kind === "public" || (req.principal.kind === "token" && req.principal.scope.publishedOnly);
 
-  const stateNames = translationMap(await h.db.all("SELECT state_id, locale, name FROM state_translations"), "state_id", "name");
-  const states = (await h.db.all("SELECT id, name, is_open, is_waiting_for_customer FROM states")).map((r) => ({
+  const stateRows = await h.db.all("SELECT state_id, locale, name, description FROM state_translations");
+  const stateNames = translationMap(stateRows, "state_id", "name");
+  const stateDescriptions = translationMap(stateRows.filter((r) => r.description != null), "state_id", "description");
+  const stateTranslations = completeTranslations(stateRows, "state_id", ["name", "description"]);
+  const states = (await h.db.all("SELECT id, name, description, is_open, is_waiting_for_customer FROM states")).map((r) => ({
     id: String(r.id), name: pick(stateNames.get(String(r.id)), String(r.name), locale, fallbacks),
+    description: stateDescriptions.has(String(r.id)) ? pick(stateDescriptions.get(String(r.id)), r.description == null ? "" : String(r.description), locale, fallbacks) : (r.description == null ? null : String(r.description)),
     isOpen: Number(r.is_open) === 1, isWaitingForCustomer: Number(r.is_waiting_for_customer) === 1,
-    ...(includeTranslations ? { translations: Object.fromEntries(stateNames.get(String(r.id)) ?? []) } : {}),
+    ...(includeTranslations ? { translations: Object.fromEntries(stateTranslations.get(String(r.id)) ?? []) } : {}),
   }));
   const transitions = (await h.db.all("SELECT from_state, to_state FROM state_transitions")).map((r) => ({ from: String(r.from_state), to: String(r.to_state) }));
-  const formNames = translationMap(await platform.shared.all("SELECT ft.form_id, ft.locale, ft.title FROM form_translations ft JOIN form_definitions f ON f.form_id = ft.form_id WHERE f.registry_id = ?", [h.def.registryId]), "form_id", "title");
+  const formRows = await platform.shared.all("SELECT ft.form_id, ft.locale, ft.title, ft.description FROM form_translations ft JOIN form_definitions f ON f.form_id = ft.form_id WHERE f.registry_id = ?", [h.def.registryId]);
+  const formNames = translationMap(formRows, "form_id", "title");
+  const formDescriptions = translationMap(formRows.filter((r) => r.description != null), "form_id", "description");
+  const formTranslations = completeTranslations(formRows, "form_id", ["title", "description"]);
   const forms = (await platform.shared.all("SELECT form_id, kind, audience, title, requires_approval, field_subset, property_schema, allow_attachments, operation_type FROM form_definitions WHERE registry_id = ? AND active = 1", [h.def.registryId])).map((r) => ({
     formId: String(r.form_id), kind: String(r.kind), audience: String(r.audience), title: pick(formNames.get(String(r.form_id)), String(r.title), locale, fallbacks),
+    description: formDescriptions.has(String(r.form_id)) ? pick(formDescriptions.get(String(r.form_id)), "", locale, fallbacks) : null,
     requiresApproval: Number(r.requires_approval) === 1, fieldSubset: r.field_subset ? JSON.parse(String(r.field_subset)) : null,
     propertySchema: r.property_schema ? JSON.parse(String(r.property_schema)) : null, allowAttachments: Number(r.allow_attachments) === 1,
     operationType: r.operation_type === null ? null : String(r.operation_type),
-    ...(includeTranslations ? { translations: Object.fromEntries(formNames.get(String(r.form_id)) ?? []) } : {}),
+    ...(includeTranslations ? { translations: Object.fromEntries(formTranslations.get(String(r.form_id)) ?? []) } : {}),
   }));
   const categoryNames = translationMap(await platform.shared.all("SELECT category_id, locale, name FROM category_translations"), "category_id", "name");
   const categories = (await platform.shared.all("SELECT category_id, display_code, name FROM categories WHERE active = 1 ORDER BY display_code"))
     .map((r) => ({ code: String(r.display_code), name: pick(categoryNames.get(String(r.category_id)), String(r.name), locale, fallbacks), ...(includeTranslations ? { translations: Object.fromEntries(categoryNames.get(String(r.category_id)) ?? []) } : {}) }))
     .filter((category) => categoryBelongsToRegistry(h.def, category.code));
-  const fieldNames = translationMap(await platform.shared.all("SELECT field_name, locale, label FROM field_translations WHERE registry_id = ?", [h.def.registryId]), "field_name", "label");
+  const fieldRows = await platform.shared.all("SELECT field_name, locale, label, help_text FROM field_translations WHERE registry_id = ?", [h.def.registryId]);
+  const fieldNames = translationMap(fieldRows, "field_name", "label");
+  const fieldHelpTexts = translationMap(fieldRows.filter((r) => r.help_text != null), "field_name", "help_text");
+  const fieldTranslations = completeTranslations(fieldRows, "field_name", ["label", "help_text"]);
   const visibleFields = h.def.fields.filter((field) => projectionMetadata ? field.publicationEligible : isCustomer ? field.writableOnCreate || field.writableOnUpdate : true);
   const fields = visibleFields.map((field) => ({
     ...(isWorker ? field : { name: field.name, type: field.type, nullable: field.nullable, writableOnCreate: field.writableOnCreate, writableOnUpdate: field.writableOnUpdate, publicationEligible: field.publicationEligible }),
     label: pick(fieldNames.get(field.name), field.name, locale, fallbacks),
-    ...(includeTranslations ? { translations: Object.fromEntries(fieldNames.get(field.name) ?? []) } : {}),
+    helpText: fieldHelpTexts.has(field.name) ? pick(fieldHelpTexts.get(field.name), "", locale, fallbacks) : null,
+    ...(includeTranslations ? { translations: Object.fromEntries(fieldTranslations.get(field.name) ?? []) } : {}),
   }));
   const registryNames = translationMap(await platform.shared.all("SELECT registry_id, locale, name FROM registry_translations WHERE registry_id = ?", [h.def.registryId]), "registry_id", "name");
   const visibleForms = isWorker ? forms : isCustomer ? forms.filter((form) => form.audience === "customer") : [];
