@@ -117,7 +117,7 @@ async function boot() {
     location.assign(url);
   });
   const idSel = $("#identity");
-  for (const [k, v] of Object.entries(IDENTITIES)) idSel.append(h("option", { value: k }, v.label));
+  for (const [k, v] of Object.entries(IDENTITIES)) idSel.append(h("option", { value: k }, ts(v.label)));
   idSel.value = state.identity;
   idSel.addEventListener("change", async () => {
     state.identity = idSel.value;
@@ -177,17 +177,17 @@ function readField(f) {
 async function renderCustomer(v) {
   const m = meta();
   v.innerHTML = "";
-  v.append(h("h2", null, "Customer portal"), h("p", { class: "sub" }, "See and act on your own cases, and start new ones."));
+  v.append(h("h2", null, t("customer.title")), h("p", { class: "sub" }, t("customer.subtitle")));
   if (!state.identity.startsWith("customer:")) {
-    v.append(h("div", { class: "hint" }, "Switch “Acting as” to Citizen One or Two to use this portal."));
+    v.append(h("div", { class: "hint" }, t("customer.switchHint")));
   }
 
   const listCard = h("div", { class: "card" }, h("h3", null, t("customer.myCases")));
   v.append(listCard);
   if (state.customerCreating) { showNewCaseForm(listCard); return; }
   const r = await api("GET", `/api/registries/${state.registry}/my-cases`);
-  if (r.status !== 200) { listCard.append(h("div", { class: "hint" }, "Sign in as a customer to see your cases.")); }
-  else if (!r.data.cases.length) listCard.append(h("div", { class: "empty" }, "No cases yet. Start one above."));
+  if (r.status !== 200) { listCard.append(h("div", { class: "hint" }, t("customer.signInHint"))); }
+  else if (!r.data.cases.length) listCard.append(h("div", { class: "empty" }, t("customer.empty")));
   else listCard.append(caseTable(m, r.data.cases, (c) => { state.open.customer = c.diaryNumber; renderCustomer(v).catch(console.error); }));
   listCard.append(h("div", { class: "list-actions inline" },
     h("button", { class: "btn", onclick: () => { state.customerCreating = true; renderCustomer(v); } }, t("customer.start")),
@@ -220,21 +220,21 @@ function showNewCaseForm(v) {
 async function renderWorker(v) {
   const m = meta();
   v.innerHTML = "";
-  v.append(h("h2", null, "Case-worker portal"), h("p", { class: "sub" }, "Your queue, bounded by category authorization."));
-  if (!state.identity.startsWith("worker:")) v.append(h("div", { class: "hint" }, "Switch “Acting as” to a worker (Anna 105, Bo 200, Cara 300) to use this portal."));
+  v.append(h("h2", null, t("worker.title")), h("p", { class: "sub" }, t("worker.subtitle")));
+  if (!state.identity.startsWith("worker:")) v.append(h("div", { class: "hint" }, t("worker.switchHint")));
 
   const views = [["assigned", "Assigned to me"], ["unassigned", "Unassigned (opted-in)"], ["authorized", "All authorized"]];
   const pills = h("div", { class: "pillbar" }, ...views.map(([k, label]) =>
-    h("button", { class: state.workerView === k ? "active" : "", onclick: () => { state.workerView = k; renderWorker(v); } }, label)));
+    h("button", { class: state.workerView === k ? "active" : "", onclick: () => { state.workerView = k; renderWorker(v); } }, ts(label))));
   const listCard = h("div", { class: "card" });
   listCard.append(h("div", { class: "list-filters" }, pills));
   v.append(listCard);
   const r = await api("GET", `/api/registries/${state.registry}/worker/cases?view=${state.workerView}`);
-  if (r.status !== 200) listCard.append(h("div", { class: "hint" }, "Worker authentication required."));
-  else if (!r.data.cases.length) listCard.append(h("div", { class: "empty" }, "No cases in this view."));
+  if (r.status !== 200) listCard.append(h("div", { class: "hint" }, t("worker.authRequired")));
+  else if (!r.data.cases.length) listCard.append(h("div", { class: "empty" }, t("worker.empty")));
   else {
     const extra = state.workerView === "unassigned"
-      ? { header: "", cell: (c) => h("button", { class: "btn sm ghost", onclick: async (e) => { e.stopPropagation(); const a = await api("POST", `/api/registries/${state.registry}/cases/${encodeURIComponent(c.diaryNumber)}/assign`, {}); if (ok(a, "Assigned to you")) renderWorker(v); } }, "Assign to me") }
+      ? { header: "", cell: (c) => h("button", { class: "btn sm ghost", onclick: async (e) => { e.stopPropagation(); const a = await api("POST", `/api/registries/${state.registry}/cases/${encodeURIComponent(c.diaryNumber)}/assign`, {}); if (ok(a, t("worker.assignedToast"))) renderWorker(v); } }, t("worker.assign")) }
       : null;
     listCard.append(caseTable(m, r.data.cases, (c) => { state.open.worker = c.diaryNumber; renderWorker(v); }, extra));
   }
@@ -242,8 +242,8 @@ async function renderWorker(v) {
   // Pending approvals.
   const pend = await api("GET", `/api/registries/${state.registry}/worker/pending`);
   if (pend.status === 200 && pend.data.pending.length) {
-    const card = h("div", { class: "card" }, h("h3", null, "Pending customer submissions to approve"));
-    const t = h("table", null, h("thead", null, h("tr", null, h("th", null, "Case"), h("th", null, "Form"), h("th", null, "Proposed"), h("th", null, ""))));
+    const card = h("div", { class: "card" }, h("h3", null, t("worker.pending")));
+    const table = h("table", null, h("thead", null, h("tr", null, h("th", null, "Case"), h("th", null, "Form"), h("th", null, "Proposed"), h("th", null, ""))));
     const tb = h("tbody");
     for (const p of pend.data.pending) {
       tb.append(h("tr", null,
@@ -251,10 +251,10 @@ async function renderWorker(v) {
         h("td", null, p.formId),
         h("td", { class: "mono" }, JSON.stringify(p.payload)),
         h("td", { class: "inline" },
-          h("button", { class: "btn sm", onclick: async () => { const a = await api("POST", `/api/registries/${state.registry}/pending/${p.pendingId}/approve`, {}); if (ok(a, "Approved")) renderWorker(v); } }, "Approve"),
-          h("button", { class: "btn sm danger", onclick: async () => { const a = await api("POST", `/api/registries/${state.registry}/pending/${p.pendingId}/reject`, {}); if (ok(a, "Rejected")) renderWorker(v); } }, "Reject"))));
+          h("button", { class: "btn sm", onclick: async () => { const a = await api("POST", `/api/registries/${state.registry}/pending/${p.pendingId}/approve`, {}); if (ok(a, t("worker.approved"))) renderWorker(v); } }, t("worker.approve")),
+          h("button", { class: "btn sm danger", onclick: async () => { const a = await api("POST", `/api/registries/${state.registry}/pending/${p.pendingId}/reject`, {}); if (ok(a, t("worker.rejected"))) renderWorker(v); } }, t("worker.reject")))));
     }
-    t.append(tb); card.append(t); v.append(card);
+    table.append(tb); card.append(table); v.append(card);
   }
 
   if (state.open.worker) v.append(await caseDetailCard("worker", state.open.worker));
@@ -269,10 +269,10 @@ async function renderPublishing(v, newSearch = false) {
   const keepScope = $("#pub_scope") ? $("#pub_scope").value : "registry";
   if (newSearch) state.open.publishing = null;
   v.innerHTML = "";
-  v.append(h("h2", null, "Publishing portal"), h("p", { class: "sub" }, "Literal substring search across published case fields and published operation content — nothing private is searched."));
-  const queryInput = h("input", { id: "pub_query", placeholder: "at least 3 characters", style: "min-width:280px", value: keepQuery });
-  const catInput = h("input", { id: "pub_cat", placeholder: "category prefix e.g. 105", style: "max-width:220px", value: keepCat });
-  const scope = h("select", { id: "pub_scope" }, h("option", { value: "registry" }, "Current registry"), h("option", { value: "all" }, "All registries"));
+  v.append(h("h2", null, t("publishing.title")), h("p", { class: "sub" }, t("publishing.subtitle")));
+  const queryInput = h("input", { id: "pub_query", placeholder: t("publishing.queryPlaceholder"), style: "min-width:280px", value: keepQuery });
+  const catInput = h("input", { id: "pub_cat", placeholder: t("publishing.categoryPlaceholder"), style: "max-width:220px", value: keepCat });
+  const scope = h("select", { id: "pub_scope" }, h("option", { value: "registry" }, t("publishing.currentRegistry")), h("option", { value: "all" }, t("publishing.allRegistries")));
   scope.value = keepScope;
   const filters = h("form", {
     class: "inline",
@@ -287,7 +287,7 @@ async function renderPublishing(v, newSearch = false) {
   const path = keepScope === "all" ? "/api/published/search" : `/api/registries/${state.registry}/published`;
   const r = await api("GET", `${path}?${params}`);
   if (!ok(r)) { card.append(h("div", { class: "empty" }, r.data.error)); return; }
-  if (!r.data.cases.length) card.append(h("div", { class: "empty" }, "No published cases. (A worker can publish a case from its detail view.)"));
+  if (!r.data.cases.length) card.append(h("div", { class: "empty" }, t("publishing.empty")));
   else card.append(caseTable(m, r.data.cases, async (c) => {
     if (c.registryId && c.registryId !== state.registry) {
       state.registry = c.registryId;
@@ -318,12 +318,12 @@ const MGMT_SECTIONS = [
 async function renderManagement(v) {
   const m = meta();
   v.innerHTML = "";
-  v.append(h("h2", null, "Management portal"), h("p", { class: "sub" }, "Configure a registry without a release. Admin only."));
-  if (state.identity !== "worker:w-admin") v.append(h("div", { class: "hint" }, "Switch “Acting as” to Admin to use the management portal."));
+  v.append(h("h2", null, t("management.title")), h("p", { class: "sub" }, t("management.subtitle")));
+  if (state.identity !== "worker:w-admin") v.append(h("div", { class: "hint" }, t("management.switchHint")));
 
   // Sub-tab navigation — one section per managed resource type.
   const nav = h("div", { class: "pillbar subnav" }, ...MGMT_SECTIONS.map(([key, label]) =>
-    h("button", { class: state.mgmtSection === key ? "active" : "", onclick: () => { state.mgmtSection = key; renderManagement(v); } }, label)));
+    h("button", { class: state.mgmtSection === key ? "active" : "", onclick: () => { state.mgmtSection = key; renderManagement(v); } }, ts(label))));
   v.append(nav);
 
   const body = h("div", { class: "mgmt-body" });
@@ -592,7 +592,7 @@ function gapNote() {
 // ---- shared building blocks ------------------------------------------------
 
 function caseTable(m, cases, onOpen, extra) {
-  const head = h("tr", null, h("th", null, "Diary number"), h("th", null, "Category"), h("th", null, "State"), h("th", null, ""));
+  const head = h("tr", null, h("th", null, t("table.diary")), h("th", null, t("table.category")), h("th", null, t("table.state")), h("th", null, ""));
   if (extra) head.append(h("th", null, extra.header));
   const tb = h("tbody");
   for (const c of cases) {
@@ -613,17 +613,17 @@ async function caseDetailCard(tab, diary) {
   const card = h("div", { class: "card" });
   card.append(h("div", { class: "inline", style: "justify-content:space-between" },
     h("h3", null, t("case.heading", { diary })),
-    h("button", { class: "btn ghost sm", onclick: () => { state.open[tab] = null; render(); } }, "Close")));
+    h("button", { class: "btn ghost sm", onclick: () => { state.open[tab] = null; render(); } }, t("common.close"))));
   if (r.status !== 200) { card.append(h("div", { class: "hint" }, t("case.notVisible", { status: r.status }))); return card; }
   const c = r.data.case;
   card.append(h("dl", { class: "kv" },
-    h("dt", null, "State"), h("dd", null, stateBadge(m, c.state, tab === "publishing" || c.isPublished)),
-    h("dt", null, "Category"), h("dd", { class: "mono" }, c.category),
-    h("dt", null, c.created ? "Created" : "Published"), h("dd", { class: "mono" }, c.created || c.publishedAt || "—")));
+    h("dt", null, t("table.state")), h("dd", null, stateBadge(m, c.state, tab === "publishing" || c.isPublished)),
+    h("dt", null, t("table.category")), h("dd", { class: "mono" }, c.category),
+    h("dt", null, c.created ? t("case.created") : t("case.published")), h("dd", { class: "mono" }, c.created || c.publishedAt || "—")));
   if (c.fields && Object.keys(c.fields).length) {
     const publicFields = h("dl", { class: "kv" });
     for (const [name, value] of Object.entries(c.fields)) publicFields.append(h("dt", null, name), h("dd", null, String(value ?? "—")));
-    card.append(h("h3", null, "Published fields"), publicFields);
+    card.append(h("h3", null, t("case.publishedFields")), publicFields);
   }
 
   // Worker actions.
@@ -632,7 +632,7 @@ async function caseDetailCard(tab, diary) {
   if (tab === "customer" && state.identity.startsWith("customer:")) card.append(customerForms(m, c));
 
   // History.
-  card.append(h("h3", null, "History (append-only)"));
+  card.append(h("h3", null, t("case.history")));
   const hist = h("div", { class: "hist" });
   for (const op of r.data.history) hist.append(h("div", { class: "op" },
     h("span", { class: "op-type" }, `#${op.operationId} ${op.type}`), " ",
@@ -657,7 +657,7 @@ async function workerActions(m, c, history) {
 
   // Assign + explicit publication projection.
   const actions = h("div", { class: "inline", style: "margin:8px 0" },
-    h("button", { class: "btn sm ghost", onclick: async () => { const r = await api("POST", `/api/registries/${state.registry}/cases/${encodeURIComponent(c.diaryNumber)}/assign`, {}); ok(r, "Assigned to you"); } }, "Assign to me"),
+    h("button", { class: "btn sm ghost", onclick: async () => { const r = await api("POST", `/api/registries/${state.registry}/cases/${encodeURIComponent(c.diaryNumber)}/assign`, {}); ok(r, t("worker.assignedToast")); } }, t("worker.assign")),
     h("button", { class: "btn sm ghost", onclick: async () => {
       const fields = [...document.querySelectorAll("[data-publish-field]:checked")].map((el) => el.dataset.publishField);
       const operations = [...document.querySelectorAll("[data-publish-operation]:checked")].map((el) => Number(el.dataset.publishOperation));
@@ -702,7 +702,7 @@ function caseFormBlock(f, c) {
     for (const d of defs) { const val = readField(d); if (val !== undefined) fields[d.name] = val; }
     const r = await api("POST", `/api/registries/${state.registry}/forms/${f.formId}/submit`, { diaryNumber: c.diaryNumber, fields });
     if (ok(r, r.status === 202 ? "Submitted — awaiting worker approval" : "Applied")) render();
-  } }, "Submit"));
+  } }, t("common.submit")));
   return box;
 }
 
@@ -730,8 +730,8 @@ function operationFormBlock(f, c) {
       body.attachments = [{ filename: $("#op_att_name").value, contentType: "text/plain", base64: btoa($("#op_att_body").value || "") }];
     }
     const r = await api("POST", `/api/registries/${state.registry}/forms/${f.formId}/submit`, body);
-    if (ok(r, "Operation recorded")) render();
-  } }, "Submit"));
+    if (ok(r, t("operation.recorded"))) render();
+  } }, t("common.submit")));
   return box;
 }
 
