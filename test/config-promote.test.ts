@@ -57,14 +57,6 @@ test("promoting a registry config to a fresh environment reproduces its behavior
 
 test("reapplying config preserves translations while replacing form definitions", async () => {
   const { platform } = await buildSamplePlatform(fixedClock(NOW));
-  await platform.shared.run(`
-    CREATE TABLE form_translations (
-      form_id TEXT NOT NULL REFERENCES form_definitions(form_id),
-      locale TEXT NOT NULL,
-      title TEXT NOT NULL,
-      PRIMARY KEY (form_id, locale)
-    )
-  `);
   const form = await platform.shared.get(
     "SELECT form_id FROM form_definitions WHERE registry_id = ? LIMIT 1",
     [PERMIT_CONFIG.registryId],
@@ -79,10 +71,12 @@ test("reapplying config preserves translations while replacing form definitions"
   assert.ok(registryDb);
   await applyRegistryConfig(platform.shared, registryDb, PERMIT_CONFIG, NOW);
 
-  assert.equal(
-    Number((await platform.shared.get("SELECT COUNT(*) AS n FROM form_translations"))?.n),
-    1,
+  const preserved = await platform.shared.get(
+    "SELECT locale, title FROM form_translations WHERE form_id = ? AND locale = ?",
+    [String(form.form_id), "sv"],
   );
+  assert.equal(preserved?.locale, "sv");
+  assert.equal(preserved?.title, "Översättning");
   assert.equal(
     Number((await platform.shared.get("SELECT COUNT(*) AS n FROM form_definitions WHERE registry_id = ?", [PERMIT_CONFIG.registryId]))?.n),
     PERMIT_CONFIG.forms?.length ?? 0,

@@ -628,16 +628,13 @@ async function caseDetailCard(tab, diary) {
 
   // Worker actions.
   if (tab === "worker" && state.identity.startsWith("worker:")) card.append(await workerActions(m, c, r.data.history));
-  // Customer forms.
-  if (tab === "customer" && state.identity.startsWith("customer:")) card.append(customerForms(m, c));
-
-  // History.
-  card.append(h("h3", null, t("case.history")));
-  const hist = h("div", { class: "hist" });
-  for (const op of r.data.history) hist.append(h("div", { class: "op" },
-    h("span", { class: "op-type" }, `#${op.operationId} ${op.type}`), " ",
-    h("span", { class: "op-meta" }, `${op.direction} · by ${op.actorKind}${op.comment ? " · " + op.comment : ""}`)));
-  card.append(hist);
+  // Operations are a self-contained list. Workers can select operation forms;
+  // customers can select any form available for acting on their own case.
+  const isCustomer = tab === "customer" && state.identity.startsWith("customer:");
+  const forms = tab === "worker" && state.identity.startsWith("worker:")
+    ? (m.forms || []).filter((f) => f.audience === "worker" && f.kind === "operation")
+    : isCustomer ? (m.forms || []).filter((f) => f.audience === "customer") : [];
+  card.append(operationList(c, r.data.history, forms, isCustomer));
   return card;
 }
 
@@ -645,13 +642,16 @@ async function workerActions(m, c, history) {
   const wrap = h("div", null);
   // Transition control.
   const allowed = (m.transitions || []).filter((t) => t.from === c.state).map((t) => t.to);
-  const tRow = h("div", { class: "inline", style: "margin:8px 0" });
+  const tRow = h("div", { class: "inline action-picker", style: "margin:8px 0" });
   if (allowed.length) {
-    const sel = h("select", { id: "tr_to" }, ...allowed.map((s) => h("option", { value: s }, (m.states.find((x) => x.id === s) || {}).name || s)));
-    tRow.append("Move to ", sel, h("button", { class: "btn sm", onclick: async () => {
+    const sel = h("select", { id: "tr_to", "aria-label": t("transition.stateLabel") },
+      h("option", { value: "", disabled: true, selected: true }, t("transition.chooseState")),
+      ...allowed.map((s) => h("option", { value: s }, (m.states.find((x) => x.id === s) || {}).name || s)));
+    tRow.append(h("button", { class: "btn", onclick: async () => {
+      if (!sel.value) { toast(t("transition.chooseStateRequired"), "err"); sel.focus(); return; }
       const r = await api("POST", `/api/registries/${state.registry}/cases/${encodeURIComponent(c.diaryNumber)}/transition`, { toState: sel.value });
       if (ok(r, `Now ${sel.value}${r.data.rulesFired ? ` · ${r.data.rulesFired} rule(s) fired` : ""}`)) { state.open.worker = c.diaryNumber; renderWorker($("#view")); }
-    } }, "Apply transition"));
+    } }, t("transition.apply")), sel);
   } else tRow.append(h("span", { class: "op-meta" }, "No onward transitions from this state."));
   wrap.append(tRow);
 
@@ -674,39 +674,52 @@ async function workerActions(m, c, history) {
       h("label", { class: "inline" }, h("input", { type: "checkbox", "data-publish-operation": String(op.operationId) }), `#${op.operationId} ${op.type}`))));
   }
 
-  // Worker operation forms.
-  const opForms = (m.forms || []).filter((f) => f.audience === "worker" && f.kind === "operation");
-  for (const f of opForms) wrap.append(operationFormBlock(f, c));
   return wrap;
 }
 
-function customerForms(m, c) {
-  const wrap = h("div", null, h("h3", null, "Available forms"));
-  const forms = (m.forms || []).filter((f) => f.audience === "customer");
-  if (!forms.length) { wrap.append(h("div", { class: "empty" }, "No customer forms for this registry.")); return wrap; }
-  for (const f of forms) {
-    if (f.kind === "case") wrap.append(caseFormBlock(f, c));
-    else wrap.append(operationFormBlock(f, c));
+function operationList(c, history, forms, allCustomerForms = false) {
+  const card = h("div", { class: "card operation-list" }, h("h3", null, `${t("case.operations")} (${history.length})`));
+  const hist = h("div", { class: "hist", "aria-label": t("case.history") });
+  for (const op of history) hist.append(h("div", { class: "op" },
+    h("span", { class: "op-type" }, `#${op.operationId} ${op.type}`), " ",
+    h("span", { class: "op-meta" }, `${op.direction} · by ${op.actorKind}${op.comment ? " · " + op.comment : ""}`)));
+  card.append(hist);
+
+  if (forms.length) {
+    const select = h("select", { "aria-label": t(allCustomerForms ? "form.formLabel" : "operation.formLabel") },
+      h("option", { value: "", disabled: true, selected: true }, t(allCustomerForms ? "form.choose" : "operation.chooseForm")),
+      ...forms.map((f) => h("option", { value: f.formId }, f.title)));
+    card.append(h("div", { class: "list-actions inline action-picker" },
+      h("button", { class: "btn", onclick: () => {
+        const form = forms.find((f) => f.formId === select.value);
+        if (!form) { toast(t(allCustomerForms ? "form.chooseRequired" : "operation.chooseFormRequired"), "err"); select.focus(); return; }
+        const showList = () => card.replaceWith(operationList(c, history, forms, allCustomerForms));
+        const editor = form.kind === "case" ? caseFormBlock(form, c, showList) : operationFormBlock(form, c, showList);
+        card.replaceChildren(editor);
+        card.classList.add("editing");
+      } }, t(allCustomerForms ? "form.open" : "operation.add")), select));
   }
-  return wrap;
+  return card;
 }
 
-function caseFormBlock(f, c) {
+function caseFormBlock(f, c, onCancel) {
   const m = meta();
   const subset = f.fieldSubset || m.fields.map((x) => x.name);
   const defs = m.fields.filter((x) => subset.includes(x.name));
   const box = h("div", { class: "card", style: "background:var(--panel-2)" }, h("h3", null, f.title + (f.requiresApproval ? " (needs approval)" : "")));
   for (const d of defs) box.append(h("div", { class: "field" }, h("label", null, d.name), fieldInput(d)));
-  box.append(h("button", { class: "btn sm", onclick: async () => {
+  const submit = h("button", { class: "btn sm", onclick: async () => {
     const fields = {};
     for (const d of defs) { const val = readField(d); if (val !== undefined) fields[d.name] = val; }
     const r = await api("POST", `/api/registries/${state.registry}/forms/${f.formId}/submit`, { diaryNumber: c.diaryNumber, fields });
     if (ok(r, r.status === 202 ? "Submitted — awaiting worker approval" : "Applied")) render();
-  } }, t("common.submit")));
+  } }, t("common.submit"));
+  box.append(h("div", { class: "inline" }, submit,
+    onCancel && h("button", { class: "btn sm ghost", onclick: onCancel }, t("common.cancel"))));
   return box;
 }
 
-function operationFormBlock(f, c) {
+function operationFormBlock(f, c, onCancel) {
   const schema = f.propertySchema || { properties: {}, required: [] };
   const props = Object.entries(schema.properties || {});
   const box = h("div", { class: "card", style: "background:var(--panel-2)" }, h("h3", null, f.title));
@@ -719,7 +732,7 @@ function operationFormBlock(f, c) {
   if (f.allowAttachments) box.append(h("div", { class: "field" },
     h("label", null, "Attachment filename"), h("input", { id: "op_att_name", placeholder: "deed.txt" }),
     h("label", null, "Attachment text"), h("input", { id: "op_att_body", placeholder: "content" })));
-  box.append(h("button", { class: "btn sm", onclick: async () => {
+  const submit = h("button", { class: "btn sm", onclick: async () => {
     const properties = {};
     for (const [name, spec] of props) {
       const el = $("#op_" + name); if (!el || el.value === "") continue;
@@ -731,7 +744,9 @@ function operationFormBlock(f, c) {
     }
     const r = await api("POST", `/api/registries/${state.registry}/forms/${f.formId}/submit`, body);
     if (ok(r, t("operation.recorded"))) render();
-  } }, t("common.submit")));
+  } }, t("common.submit"));
+  box.append(h("div", { class: "inline" }, submit,
+    onCancel && h("button", { class: "btn sm ghost", onclick: onCancel }, t("common.cancel"))));
   return box;
 }
 

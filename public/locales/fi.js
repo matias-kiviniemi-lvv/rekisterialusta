@@ -127,7 +127,20 @@ export const messages = Object.freeze({
   "case.publishedFields": "Julkaistut kentät",
   "case.history": "Historia (vain lisäykset)",
   "field.category": "Luokka",
-  "operation.recorded": "Toimenpide kirjattu"
+  "operation.recorded": "Toimenpide kirjattu",
+  "case.operations": "Toimenpiteet",
+  "operation.add": "Lisää toimenpide",
+  "operation.formLabel": "Toimenpidelomake",
+  "operation.chooseForm": "Valitse toimenpidelomake",
+  "operation.chooseFormRequired": "Valitse ensin toimenpidelomake",
+  "form.open": "Avaa lomake",
+  "form.formLabel": "Lomake",
+  "form.choose": "Valitse lomake",
+  "form.chooseRequired": "Valitse ensin lomake",
+  "transition.apply": "Tee tilasiirtymä",
+  "transition.stateLabel": "Uusi tila",
+  "transition.chooseState": "Valitse uusi tila",
+  "transition.chooseStateRequired": "Valitse ensin uusi tila"
 });
 
 export const sourceKeys = Object.freeze({
