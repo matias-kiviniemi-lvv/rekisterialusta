@@ -138,6 +138,7 @@ button.btn.danger { background: var(--danger); border-color: var(--danger); colo
 .token-raw { font-family: var(--mono); font-size: 12px; word-break: break-all; background: var(--panel-2); padding: 10px; border: 1px solid var(--line); }
 .inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .inline.wrap { align-items: flex-start; gap: 8px 16px; }
+.action-picker > .btn, .action-picker > select { height: 42px; min-height: 42px; }
 .subnav { border-top: 1px solid var(--line); padding-top: 16px; margin: 8px 0 20px; }
 .mgmt-body > .hint { margin-bottom: 20px; }
 textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 12.5px; }

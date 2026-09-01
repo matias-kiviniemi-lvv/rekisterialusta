@@ -146,8 +146,6 @@ export async function applyRegistryConfig(
     updateColumns: ["registry_id", "kind", "audience", "title", "requires_approval", "field_subset", "property_schema", "allow_attachments", "operation_type"],
   });
   await shared.transaction(async (tx) => {
-    await tx.run("DELETE FROM form_translations WHERE form_id IN (SELECT form_id FROM form_definitions WHERE registry_id = ?)", [config.registryId]);
-    await tx.run("DELETE FROM form_definitions WHERE registry_id = ?", [config.registryId]);
     for (const f of forms) {
       await tx.run(
         formSql,
@@ -160,11 +158,19 @@ export async function applyRegistryConfig(
           f.operationType ?? null,
         ],
       );
-      const locales = new Set([...Object.keys(f.titles?.values ?? { fi: f.title }), ...Object.keys(f.descriptions?.values ?? {})]);
-      for (const locale of locales) {
-        const title = resolveLocalizedText(f.titles, f.title, locale).value;
-        const description = f.descriptions ? resolveLocalizedText(f.descriptions, "", locale).value : null;
-        await tx.run("INSERT INTO form_translations (form_id, locale, title, description) VALUES (?, ?, ?, ?)", [f.formId, normalizeLocale(locale), title, description]);
+      if (hasFormTranslations) {
+        const translationSql = ds.upsert({
+          table: "form_translations",
+          insertColumns: ["form_id", "locale", "title", "description"],
+          conflictColumns: ["form_id", "locale"],
+          updateColumns: ["title", "description"],
+        });
+        const locales = new Set([...Object.keys(f.titles?.values ?? { fi: f.title }), ...Object.keys(f.descriptions?.values ?? {})]);
+        for (const locale of locales) {
+          const title = resolveLocalizedText(f.titles, f.title, locale).value;
+          const description = f.descriptions ? resolveLocalizedText(f.descriptions, "", locale).value : null;
+          await tx.run(translationSql, [f.formId, normalizeLocale(locale), title, description]);
+        }
       }
     }
     if (hasFormTranslations) {
