@@ -508,23 +508,24 @@ function formCreateCard(m, kind, onCancel) {
       h("div", { class: "field" }, h("label", null, t("management.propertySchema")), h("textarea", { id: "fm_schema", rows: "5", placeholder: '{ "type": "object", "properties": { "reason": { "type": "string" } } }' })),
     ]),
     h("div", { class: "inline" },
-      h("button", { class: "btn", onclick: () => submitForm(kind) }, t("management.createForm")),
+      h("button", { class: "btn", onclick: (event) => submitForm(kind, event.currentTarget.closest(".card")) }, t("management.createForm")),
       h("button", { class: "btn ghost", onclick: onCancel }, t("common.cancel"))));
 }
 
-async function submitForm(kind) {
-  const formId = $("#fm_id").value.trim();
-  const title = $("#fm_title").value.trim();
-  const description = $("#fm_description").value.trim();
+async function submitForm(kind, editor) {
+  const field = (selector) => editor.querySelector(selector);
+  const formId = field("#fm_id").value.trim();
+  const title = field("#fm_title").value.trim();
+  const description = field("#fm_description").value.trim();
   if (!formId || !title || !description) { toast(t("management.formRequired"), "err"); return; }
-  const body = { formId, title, description, audience: $("#fm_aud").value };
-  if (kind === "case") body.requiresApproval = $("#fm_appr").checked;
-  else body.allowAttachments = $("#fm_att").checked;
-  const optype = kind === "operation" ? $("#fm_optype").value.trim() : "";
+  const body = { formId, title, description, audience: field("#fm_aud").value };
+  if (kind === "case") body.requiresApproval = field("#fm_appr").checked;
+  else body.allowAttachments = field("#fm_att").checked;
+  const optype = kind === "operation" ? field("#fm_optype").value.trim() : "";
   if (optype) body.operationType = optype;
-  const subset = [...document.querySelectorAll("[data-fs]")].filter((el) => el.checked).map((el) => el.getAttribute("data-fs"));
+  const subset = [...editor.querySelectorAll("[data-fs]")].filter((el) => el.checked).map((el) => el.getAttribute("data-fs"));
   if (kind === "case" && subset.length) body.fieldSubset = subset;
-  const schemaRaw = kind === "operation" ? $("#fm_schema").value.trim() : "";
+  const schemaRaw = kind === "operation" ? field("#fm_schema").value.trim() : "";
   if (schemaRaw) {
     let parsed; try { parsed = JSON.parse(schemaRaw); } catch { toast(t("management.invalidPropertySchema"), "err"); return; }
     body.propertySchema = parsed;

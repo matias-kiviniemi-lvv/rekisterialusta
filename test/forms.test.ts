@@ -38,6 +38,27 @@ test("a form with both audience is visible to customers and workers", async () =
   }
 });
 
+test("API tokens cannot submit forms with the combined audience", async () => {
+  const { platform: p } = await buildSamplePlatform(fixedClock(NOW));
+  const created = await dispatch(p, {
+    method: "POST", url: "/api/admin/registries/permit/operation-forms", authorization: asWorker("w-admin"),
+    body: { formId: "shared-token-test", title: "Shared note", description: "Add a note.", audience: "both", operationType: "note" },
+  });
+  assert.equal(created.status, 201);
+
+  const minted = await dispatch(p, {
+    method: "POST", url: "/api/admin/registries/grant/tokens", authorization: asWorker("w-admin"),
+    body: { methods: ["POST"], resources: ["cases"], categoryScope: "300", publishedOnly: false },
+  });
+  const { raw } = minted.body as { raw: string };
+  const submitted = await dispatch(p, {
+    method: "POST", url: "/api/registries/permit/forms/shared-token-test/submit", authorization: `Bearer ${raw}`,
+    body: { category: "105.04.03", properties: {} },
+  });
+  assert.equal(submitted.status, 403);
+  assert.deepEqual(submitted.body, { error: "actor authentication required" });
+});
+
 async function seedCase(p: Awaited<ReturnType<typeof buildSamplePlatform>>["platform"], customer = "c-1") {
   const r = await dispatch(p, {
     method: "POST", url: "/api/registries/permit/cases", authorization: asCustomer(customer),

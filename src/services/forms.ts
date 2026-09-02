@@ -89,6 +89,9 @@ export async function submitForm(
 
   const who = submitterKind(principal);
   if (who === "public") return { status: 403, body: { error: "authentication required" } };
+  // Form submission authorization is actor-based. API tokens have separate
+  // resource scopes and must not fall through the combined audience branch.
+  if (principal.kind === "token") return { status: 403, body: { error: "actor authentication required" } };
   // Audience gating: a customer form is for customers, a worker form for workers.
   if (form.audience === "customer" && who !== "customer")
     return { status: 403, body: { error: "customer form" } };
