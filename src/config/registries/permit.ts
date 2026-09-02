@@ -34,21 +34,25 @@ export const PERMIT_CONFIG: RegistryConfig = {
     ["in_preparation", "decided"],
     ["decided", "closed"],
   ],
-  forms: [
+  caseForms: [
     {
       formId: "update-site-address",
-      kind: "case",
       audience: "customer",
       title: "Update site address",
+      description: "Enter the new address for the permit site.",
+      descriptions: { sourceLocale: "fi", values: { fi: "Anna lupakohteen uusi osoite." } },
       titles: { sourceLocale: "fi", values: { fi: "Päivitä kohteen osoite" } },
       requiresApproval: true,
       fieldSubset: ["site_address"],
     },
+  ],
+  operationForms: [
     {
       formId: "submit-document",
-      kind: "operation",
       audience: "customer",
       title: "Submit a supporting document",
+      description: "Describe and attach the supporting document.",
+      descriptions: { sourceLocale: "fi", values: { fi: "Kuvaile ja liitä täydentävä asiakirja." } },
       titles: { sourceLocale: "fi", values: { fi: "Toimita liiteasiakirja" } },
       operationType: "document",
       allowAttachments: true,

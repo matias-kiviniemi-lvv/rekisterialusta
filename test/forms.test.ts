@@ -8,6 +8,36 @@ const NOW = "2026-08-11T09:00:00.000Z";
 const asCustomer = (id: string) => `Bearer customer:${id}`;
 const asWorker = (id: string) => `Bearer worker:${id}`;
 
+test("forms have persistent common and type-specific models", async () => {
+  const { platform } = await buildSamplePlatform(fixedClock(NOW));
+  const base = await platform.shared.get("SELECT title, description FROM form_definitions WHERE form_id = ?", ["update-site-address"]);
+  assert.equal(base?.title, "Update site address");
+  assert.equal(base?.description, "Enter the new address for the permit site.");
+  assert.equal(Number((await platform.shared.get("SELECT requires_approval FROM case_form_definitions WHERE form_id = ?", ["update-site-address"]))?.requires_approval), 1);
+  assert.equal(Number((await platform.shared.get("SELECT allow_attachments FROM operation_form_definitions WHERE form_id = ?", ["submit-document"]))?.allow_attachments), 1);
+
+  const response = await dispatch(platform, { method: "GET", url: "/api/registries/permit/meta", authorization: asWorker("w-admin"), body: undefined });
+  const metadata = response.body as { caseForms: Array<{ description: string }>; operationForms: Array<{ operationType: string }> };
+  assert.equal(metadata.caseForms[0]?.description, "Anna lupakohteen uusi osoite.");
+  assert.equal(metadata.operationForms[0]?.operationType, "document");
+});
+
+test("a form with both audience is visible to customers and workers", async () => {
+  const { platform } = await buildSamplePlatform(fixedClock(NOW));
+  const created = await dispatch(platform, {
+    method: "POST", url: "/api/admin/registries/permit/operation-forms", authorization: asWorker("w-admin"),
+    body: { formId: "shared-note", title: "Shared note", description: "Add a note.", audience: "both", operationType: "note" },
+  });
+  assert.equal(created.status, 201);
+  assert.equal((await platform.shared.get("SELECT audience FROM form_definitions WHERE form_id = ?", ["shared-note"]))?.audience, "both");
+
+  for (const authorization of [asCustomer("c-1"), asWorker("w-anna")]) {
+    const response = await dispatch(platform, { method: "GET", url: "/api/registries/permit/meta", authorization, body: undefined });
+    const metadata = response.body as { operationForms: Array<{ formId: string }> };
+    assert.ok(metadata.operationForms.some((form) => form.formId === "shared-note"));
+  }
+});
+
 async function seedCase(p: Awaited<ReturnType<typeof buildSamplePlatform>>["platform"], customer = "c-1") {
   const r = await dispatch(p, {
     method: "POST", url: "/api/registries/permit/cases", authorization: asCustomer(customer),

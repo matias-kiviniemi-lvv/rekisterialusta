@@ -37,7 +37,7 @@ interface FormDef {
   formId: string;
   registryId: string;
   kind: "case" | "operation";
-  audience: "worker" | "customer";
+  audience: "worker" | "customer" | "both";
   requiresApproval: boolean;
   fieldSubset: string[] | null;
   propertySchema: ObjectSchema | null;
@@ -47,7 +47,13 @@ interface FormDef {
 
 async function loadForm(shared: Db, registryId: string, formId: string): Promise<FormDef | undefined> {
   const row = await shared.get(
-    "SELECT * FROM form_definitions WHERE form_id = ? AND registry_id = ? AND active = 1",
+    `SELECT f.*, c.requires_approval AS case_requires_approval, c.field_subset AS case_field_subset,
+            o.property_schema AS operation_property_schema, o.allow_attachments AS operation_allow_attachments,
+            o.operation_type AS operation_operation_type
+       FROM form_definitions f
+       LEFT JOIN case_form_definitions c ON c.form_id = f.form_id
+       LEFT JOIN operation_form_definitions o ON o.form_id = f.form_id
+      WHERE f.form_id = ? AND f.registry_id = ? AND f.active = 1`,
     [formId, registryId],
   );
   if (!row) return undefined;
@@ -55,12 +61,12 @@ async function loadForm(shared: Db, registryId: string, formId: string): Promise
     formId: String(row.form_id),
     registryId: String(row.registry_id),
     kind: row.kind as "case" | "operation",
-    audience: row.audience as "worker" | "customer",
-    requiresApproval: Number(row.requires_approval) === 1,
-    fieldSubset: row.field_subset ? (JSON.parse(String(row.field_subset)) as string[]) : null,
-    propertySchema: row.property_schema ? (JSON.parse(String(row.property_schema)) as ObjectSchema) : null,
-    allowAttachments: Number(row.allow_attachments) === 1,
-    operationType: row.operation_type === null ? null : String(row.operation_type),
+    audience: row.audience as "worker" | "customer" | "both",
+    requiresApproval: Number(row.case_requires_approval) === 1,
+    fieldSubset: row.case_field_subset ? (JSON.parse(String(row.case_field_subset)) as string[]) : null,
+    propertySchema: row.operation_property_schema ? (JSON.parse(String(row.operation_property_schema)) as ObjectSchema) : null,
+    allowAttachments: Number(row.operation_allow_attachments) === 1,
+    operationType: row.operation_operation_type === null ? null : String(row.operation_operation_type),
   };
 }
 

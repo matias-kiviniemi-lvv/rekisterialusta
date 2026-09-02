@@ -354,9 +354,13 @@ const getMeta: ApiHandler = async (platform, req) => {
   const formNames = translationMap(formRows, "form_id", "title");
   const formDescriptions = translationMap(formRows.filter((r) => r.description != null), "form_id", "description");
   const formTranslations = completeTranslations(formRows, "form_id", ["title", "description"]);
-  const forms = (await platform.shared.all("SELECT form_id, kind, audience, title, requires_approval, field_subset, property_schema, allow_attachments, operation_type FROM form_definitions WHERE registry_id = ? AND active = 1", [h.def.registryId])).map((r) => ({
+  const forms = (await platform.shared.all(`SELECT f.form_id, f.kind, f.audience, f.title, f.description,
+      c.requires_approval, c.field_subset, o.property_schema, o.allow_attachments, o.operation_type
+    FROM form_definitions f LEFT JOIN case_form_definitions c ON c.form_id = f.form_id
+    LEFT JOIN operation_form_definitions o ON o.form_id = f.form_id
+    WHERE f.registry_id = ? AND f.active = 1`, [h.def.registryId])).map((r) => ({
     formId: String(r.form_id), kind: String(r.kind), audience: String(r.audience), title: pick(formNames.get(String(r.form_id)), String(r.title), locale, fallbacks),
-    description: formDescriptions.has(String(r.form_id)) ? pick(formDescriptions.get(String(r.form_id)), "", locale, fallbacks) : null,
+    description: formDescriptions.has(String(r.form_id)) ? pick(formDescriptions.get(String(r.form_id)), String(r.description ?? ""), locale, fallbacks) : String(r.description ?? ""),
     requiresApproval: Number(r.requires_approval) === 1, fieldSubset: r.field_subset ? JSON.parse(String(r.field_subset)) : null,
     propertySchema: r.property_schema ? JSON.parse(String(r.property_schema)) : null, allowAttachments: Number(r.allow_attachments) === 1,
     operationType: r.operation_type === null ? null : String(r.operation_type),
@@ -378,11 +382,13 @@ const getMeta: ApiHandler = async (platform, req) => {
     ...(includeTranslations ? { translations: Object.fromEntries(fieldTranslations.get(field.name) ?? []) } : {}),
   }));
   const registryNames = translationMap(await platform.shared.all("SELECT registry_id, locale, name FROM registry_translations WHERE registry_id = ?", [h.def.registryId]), "registry_id", "name");
-  const visibleForms = isWorker ? forms : isCustomer ? forms.filter((form) => form.audience === "customer") : [];
+  const visibleForms = isWorker ? forms : isCustomer ? forms.filter((form) => form.audience === "customer" || form.audience === "both") : [];
+  const caseForms = visibleForms.filter((form) => form.kind === "case").map(({ kind: _kind, propertySchema: _schema, allowAttachments: _attachments, operationType: _operationType, ...form }) => form);
+  const operationForms = visibleForms.filter((form) => form.kind === "operation").map(({ kind: _kind, requiresApproval: _approval, fieldSubset: _subset, ...form }) => form);
   return { status: 200, headers: localizedHeaders(locale), body: {
     locale, fallbackLocales: [...fallbacks], registryId: h.def.registryId,
     name: pick(registryNames.get(h.def.registryId), h.def.name, locale, fallbacks), fields, states,
-    initialState: h.def.initialState, transitions: isWorker ? transitions : [], forms: visibleForms, categories,
+    initialState: h.def.initialState, transitions: isWorker ? transitions : [], caseForms, operationForms, forms: visibleForms, categories,
   } };
 };
 

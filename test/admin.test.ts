@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildSamplePlatform, fixedClock } from "../src/bootstrap.ts";
 import { dispatch } from "../src/api/server.ts";
+import { exportRegistryConfig } from "../src/services/config-promote.ts";
 
 const NOW = "2026-08-11T09:00:00.000Z";
 const asWorker = (id: string) => `Bearer worker:${id}`;
@@ -65,6 +66,10 @@ test("admin adds a worker operation form and it is immediately usable with audie
     },
   });
   assert.equal(added.status, 201);
+  const metadata = await dispatch(p, { method: "GET", url: "/api/registries/permit/meta", authorization: asWorker("w-admin"), body: undefined });
+  assert.ok((metadata.body as { operationForms: Array<{ formId: string }> }).operationForms.some((form) => form.formId === "record-inspection"));
+  const persisted = await exportRegistryConfig(p.shared, "permit");
+  assert.ok(persisted?.operationForms?.some((form) => form.formId === "record-inspection"));
 
   const created = await dispatch(p, {
     method: "POST", url: "/api/registries/permit/cases", authorization: "Bearer customer:c-1",

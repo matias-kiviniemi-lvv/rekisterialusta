@@ -13,7 +13,7 @@
 import type { Platform } from "../api/platform.ts";
 import type { Principal } from "../api/authz.ts";
 import { dialectFor } from "../db/dialect.ts";
-import type { RegistryConfig, StateDef, FormConfig, RuleConfig } from "../config/registry-config.ts";
+import type { RegistryConfig, StateDef, FormConfig, CaseFormConfig, OperationFormConfig, RuleConfig } from "../config/registry-config.ts";
 import type { RegistryFieldDef } from "../config/registry-catalog.ts";
 import { applyRegistryConfig, applyPlatformConfig } from "./config-apply.ts";
 import { exportRegistryConfig } from "./config-promote.ts";
@@ -37,8 +37,18 @@ export async function mutateRegistryConfig(
   mutate: (cfg: RegistryConfig) => RegistryConfig,
   now: string,
 ): Promise<{ version: number; addedColumns: string[] }> {
-  const current = await exportRegistryConfig(platform.shared, registryId);
-  if (!current) throw new Error(`unknown registry ${registryId}`);
+  const stored = await exportRegistryConfig(platform.shared, registryId);
+  if (!stored) throw new Error(`unknown registry ${registryId}`);
+  // Convert older combined artifacts before editing them. Leaving a legacy
+  // `forms` property present would make subsequent split-list edits invisible
+  // when the artifact is applied again.
+  const legacyForms = stored.forms ?? [];
+  const { forms: _legacy, ...withoutLegacyForms } = stored;
+  const current: RegistryConfig = {
+    ...withoutLegacyForms,
+    caseForms: stored.caseForms ?? legacyForms.filter((form) => form.kind === "case").map(({ kind: _kind, ...form }) => form),
+    operationForms: stored.operationForms ?? legacyForms.filter((form) => form.kind === "operation").map(({ kind: _kind, ...form }) => form),
+  };
   const next = mutate(current);
   const bumped: RegistryConfig = { ...next, version: (current.version ?? 1) + 1 };
   const h = platform.registry(registryId);
@@ -72,7 +82,24 @@ export async function addTransition(platform: Platform, registryId: string, from
 }
 
 export async function addForm(platform: Platform, registryId: string, form: FormConfig, now: string) {
-  return mutateRegistryConfig(platform, registryId, (cfg) => ({ ...cfg, forms: [...(cfg.forms ?? []).filter((f) => f.formId !== form.formId), form] }), now);
+  const compatible = { ...form, description: form.description || form.title };
+  return form.kind === "case" ? addCaseForm(platform, registryId, compatible, now) : addOperationForm(platform, registryId, compatible, now);
+}
+
+export async function addCaseForm(platform: Platform, registryId: string, form: CaseFormConfig, now: string) {
+  return mutateRegistryConfig(platform, registryId, (cfg) => ({
+    ...cfg,
+    caseForms: [...(cfg.caseForms ?? []).filter((f) => f.formId !== form.formId), form],
+    operationForms: (cfg.operationForms ?? []).filter((f) => f.formId !== form.formId),
+  }), now);
+}
+
+export async function addOperationForm(platform: Platform, registryId: string, form: OperationFormConfig, now: string) {
+  return mutateRegistryConfig(platform, registryId, (cfg) => ({
+    ...cfg,
+    caseForms: (cfg.caseForms ?? []).filter((f) => f.formId !== form.formId),
+    operationForms: [...(cfg.operationForms ?? []).filter((f) => f.formId !== form.formId), form],
+  }), now);
 }
 
 export async function addRule(platform: Platform, registryId: string, rule: RuleConfig, now: string) {

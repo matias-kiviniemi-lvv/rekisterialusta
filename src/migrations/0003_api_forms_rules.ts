@@ -41,7 +41,7 @@ export const m0003: Migration = {
         form_id          TEXT PRIMARY KEY,
         registry_id      TEXT NOT NULL,
         kind             TEXT NOT NULL CHECK (kind IN ('case','operation')),
-        audience         TEXT NOT NULL CHECK (audience IN ('worker','customer')),
+        audience         TEXT NOT NULL CHECK (audience IN ('worker','customer','both')),
         title            TEXT NOT NULL,
         requires_approval INTEGER NOT NULL DEFAULT 0,
         field_subset     TEXT NULL,

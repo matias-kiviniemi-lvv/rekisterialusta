@@ -21,12 +21,15 @@ import { m0001 } from "./migrations/0001_shared_schema.ts";
 import { m0003 } from "./migrations/0003_api_forms_rules.ts";
 import { m0005 } from "./migrations/0005_admin_exports.ts";
 import { m0006Shared } from "./migrations/0006_localized_metadata.ts";
+import { m0007 } from "./migrations/0007_split_forms.ts";
+import { m0008 } from "./migrations/0008_form_audience_both.ts";
 import { Platform, type Clock } from "./api/platform.ts";
 import { StubIdentityProvider, type IdentityProvider } from "./auth/identity.ts";
 import { MemoryBlobStore, type BlobStore } from "./blob/blob.ts";
 import { applyPlatformConfig, applyRegistryConfig } from "./services/config-apply.ts";
 import { PLATFORM_CONFIG, ALL_REGISTRIES } from "./config/platform-config.ts";
 import { createLogger, type Logger } from "./logging/logger.ts";
+import { exportRegistryConfig } from "./services/config-promote.ts";
 
 export function fixedClock(now: string): Clock {
   return { now: () => now };
@@ -78,7 +81,7 @@ async function bootstrapStep<T>(logger: BootstrapLogger, label: string, fn: () =
  */
 export async function buildSamplePlatform(clock: Clock): Promise<SamplePlatform> {
   const shared = new SqliteAdapter(":memory:");
-  await migrate(shared, [m0001, m0003, m0005, m0006Shared], clock.now());
+  await migrate(shared, [m0001, m0003, m0005, m0006Shared, m0007, m0008], clock.now());
   await applyPlatformConfig(shared, PLATFORM_CONFIG, clock.now());
 
   const platform = new Platform(shared, new StubIdentityProvider(), clock, new MemoryBlobStore());
@@ -128,7 +131,7 @@ export async function bootstrapFromEnv(
     "Running shared database migrations",
     () => migrate(
       shared,
-      [m0001, m0003, m0005, m0006Shared],
+      [m0001, m0003, m0005, m0006Shared, m0007, m0008],
       clock.now(),
       (message) => logger.info(`[bootstrap] Shared migration: ${message}`),
     ),
@@ -147,7 +150,11 @@ export async function bootstrapFromEnv(
   );
   const dbs: Record<string, DbAdapter> = {};
   for (const cfg of ALL_REGISTRIES) {
-    const target = config.registryTarget(cfg.database);
+    // Management changes are stored as versioned config artifacts. On restart,
+    // apply the latest persisted artifact instead of replacing it with the
+    // repository seed configuration.
+    const effectiveConfig = await exportRegistryConfig(shared, cfg.registryId) ?? cfg;
+    const target = config.registryTarget(effectiveConfig.database);
     const db = await bootstrapStep(
       logger,
       `Connecting registry "${cfg.registryId}" database ${describeTarget(target)}`,
@@ -159,7 +166,7 @@ export async function bootstrapFromEnv(
       () => applyRegistryConfig(
         shared,
         db,
-        cfg,
+        effectiveConfig,
         clock.now(),
         (message) => logger.info(`[bootstrap] Registry "${cfg.registryId}" migration: ${message}`),
       ),
@@ -168,7 +175,7 @@ export async function bootstrapFromEnv(
       `[bootstrap] Registry "${cfg.registryId}": config version ${result.version}; ` +
       `${result.addedColumns.length} field column(s) added`,
     );
-    platform.registerRegistry(cfg, db);
+    platform.registerRegistry(effectiveConfig, db);
     dbs[cfg.registryId] = db;
   }
   if (environment !== "production") {

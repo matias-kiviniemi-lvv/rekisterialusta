@@ -8,7 +8,7 @@ import type { Platform } from "./platform.ts";
 import { defineRoute, type Route } from "./router.ts";
 import type { ApiHandler, ApiRequest, ApiResponse } from "./http-types.ts";
 import {
-  isAdmin, addField, addState, addTransition, addForm, addRule, addCategory,
+  isAdmin, addField, addState, addTransition, addForm, addCaseForm, addOperationForm, addRule, addCategory,
   grantAuthorization, mintToken, revokeToken,
 } from "../services/admin.ts";
 import { exportAllRegistries } from "../services/exports.ts";
@@ -59,6 +59,16 @@ const transitions: ApiHandler = async (p, req) => {
 const forms: ApiHandler = async (p, req) => {
   const b = obj(req.body);
   const r = await addForm(p, req.params.registry!, b as never, p.clock.now());
+  return { status: 201, body: { version: r.version } };
+};
+
+const caseForms: ApiHandler = async (p, req) => {
+  const r = await addCaseForm(p, req.params.registry!, obj(req.body) as never, p.clock.now());
+  return { status: 201, body: { version: r.version } };
+};
+
+const operationForms: ApiHandler = async (p, req) => {
+  const r = await addOperationForm(p, req.params.registry!, obj(req.body) as never, p.clock.now());
   return { status: 201, body: { version: r.version } };
 };
 
@@ -120,6 +130,8 @@ export const adminRoutes: readonly Route<ApiHandler>[] = [
   defineRoute("POST", "/api/admin/registries/:registry/states", admin(states)),
   defineRoute("POST", "/api/admin/registries/:registry/transitions", admin(transitions)),
   defineRoute("POST", "/api/admin/registries/:registry/forms", admin(forms)),
+  defineRoute("POST", "/api/admin/registries/:registry/case-forms", admin(caseForms)),
+  defineRoute("POST", "/api/admin/registries/:registry/operation-forms", admin(operationForms)),
   defineRoute("POST", "/api/admin/registries/:registry/rules", admin(rules)),
   defineRoute("GET", "/api/admin/registries/:registry/config-versions", admin(configVersions)),
   defineRoute("POST", "/api/admin/registries/:registry/tokens", admin(tokens)),

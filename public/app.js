@@ -410,14 +410,20 @@ const MGMT_RENDERERS = {
   },
 
   async forms(body, m) {
-    selfContainedList(body, t("management.currentForms"), [
+    const audienceLabel = (audience) => audience === "both" ? t("management.audienceBoth") : audience === "worker" ? t("management.audienceWorker") : t("management.audienceCustomer");
+    selfContainedList(body, t("management.caseForms"), [
       { header: t("management.formId"), cls: "mono", get: (f) => f.formId },
-      { header: t("management.kind"), get: (f) => f.kind },
-      { header: t("management.audience"), get: (f) => f.audience },
+      { header: t("management.audience"), get: (f) => audienceLabel(f.audience) },
       { header: t("management.titleColumn"), get: (f) => f.title },
       { header: t("management.approval"), get: (f) => f.requiresApproval ? t("management.required") : "—" },
+    ], m.caseForms || [], t("management.noCaseForms"), t("management.createCaseForm"), (cancel) => formCreateCard(m, "case", cancel));
+    selfContainedList(body, t("management.operationForms"), [
+      { header: t("management.formId"), cls: "mono", get: (f) => f.formId },
+      { header: t("management.audience"), get: (f) => audienceLabel(f.audience) },
+      { header: t("management.titleColumn"), get: (f) => f.title },
+      { header: t("management.operationType"), get: (f) => f.operationType || "—" },
       { header: t("management.attachments"), get: (f) => f.allowAttachments ? t("common.yes") : "—" },
-    ], m.forms, t("management.noForms"), t("management.createForm"), (cancel) => formCreateCard(m, cancel));
+    ], m.operationForms || [], t("management.noOperationForms"), t("management.createOperationForm"), (cancel) => formCreateCard(m, "operation", cancel));
   },
 
   async rules(body) {
@@ -485,42 +491,45 @@ const MGMT_RENDERERS = {
 
 // ---- Management create forms (Forms + Rules) -------------------------------
 
-function formCreateCard(m, onCancel) {
+function formCreateCard(m, kind, onCancel) {
   const fieldChecks = m.fields.map((f) => h("label", { class: "inline" }, h("input", { type: "checkbox", "data-fs": f.name }), f.name));
   return h("div", { class: "card" },
-    h("h3", null, "Create form"),
-    h("div", { class: "field" }, h("label", null, "Form ID"), h("input", { id: "fm_id", placeholder: "e.g. permit_supplement" })),
-    h("div", { class: "field" }, h("label", null, "Title"), h("input", { id: "fm_title", placeholder: "Supplement request" })),
-    h("div", { class: "row" },
-      h("div", { class: "col field" }, h("label", null, "Kind"), h("select", { id: "fm_kind" }, h("option", { value: "case" }, "case"), h("option", { value: "operation" }, "operation"))),
-      h("div", { class: "col field" }, h("label", null, "Audience"), h("select", { id: "fm_aud" }, h("option", { value: "customer" }, "customer"), h("option", { value: "worker" }, "worker")))),
-    h("div", { class: "inline", style: "margin:8px 0" },
-      h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_appr" }), "requires approval"),
-      h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_att" }), "allow attachments")),
-    h("div", { class: "field" }, h("label", null, "Operation type — operation kind only, optional"), h("input", { id: "fm_optype", placeholder: "e.g. supplement" })),
-    h("div", { class: "field" }, h("label", null, "Field subset — case kind; leave all unchecked to allow all fields"), h("div", { class: "inline wrap" }, ...(fieldChecks.length ? fieldChecks : [h("span", { class: "op-meta" }, "no fields defined")]))),
-    h("div", { class: "field" }, h("label", null, "Property schema JSON — operation kind, optional"), h("textarea", { id: "fm_schema", rows: "5", placeholder: '{ "properties": { "reason": { "type": "string" } }, "required": ["reason"] }' })),
+    h("h3", null, kind === "case" ? t("management.createCaseForm") : t("management.createOperationForm")),
+    h("div", { class: "field" }, h("label", null, t("management.formId")), h("input", { id: "fm_id", placeholder: t("management.formIdPlaceholder") })),
+    h("div", { class: "field" }, h("label", null, t("management.titleColumn")), h("input", { id: "fm_title", placeholder: t("management.formTitlePlaceholder") })),
+    h("div", { class: "field" }, h("label", null, t("management.formDescription")), h("textarea", { id: "fm_description", rows: "3", placeholder: t("management.formDescriptionPlaceholder") })),
+    h("div", { class: "field" }, h("label", null, t("management.audience")), h("select", { id: "fm_aud" }, h("option", { value: "customer" }, t("management.audienceCustomer")), h("option", { value: "worker" }, t("management.audienceWorker")), h("option", { value: "both" }, t("management.audienceBoth")))),
+    ...(kind === "case" ? [
+      h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_appr" }), t("management.requiresApproval")),
+      h("div", { class: "field" }, h("label", null, t("management.fieldSubset")), h("div", { class: "inline wrap" }, ...(fieldChecks.length ? fieldChecks : [h("span", { class: "op-meta" }, t("management.noFieldsDefined"))]))),
+    ] : [
+      h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_att" }), t("management.allowAttachments")),
+      h("div", { class: "field" }, h("label", null, t("management.operationType")), h("input", { id: "fm_optype", placeholder: t("management.operationTypePlaceholder") })),
+      h("div", { class: "field" }, h("label", null, t("management.propertySchema")), h("textarea", { id: "fm_schema", rows: "5", placeholder: '{ "type": "object", "properties": { "reason": { "type": "string" } } }' })),
+    ]),
     h("div", { class: "inline" },
-      h("button", { class: "btn", onclick: submitForm }, "Create form"),
+      h("button", { class: "btn", onclick: () => submitForm(kind) }, t("management.createForm")),
       h("button", { class: "btn ghost", onclick: onCancel }, t("common.cancel"))));
 }
 
-async function submitForm() {
-  const kind = $("#fm_kind").value;
+async function submitForm(kind) {
   const formId = $("#fm_id").value.trim();
   const title = $("#fm_title").value.trim();
-  if (!formId || !title) { toast("Form ID and Title are required", "err"); return; }
-  const body = { formId, title, kind, audience: $("#fm_aud").value, requiresApproval: $("#fm_appr").checked, allowAttachments: $("#fm_att").checked };
-  const optype = $("#fm_optype").value.trim();
+  const description = $("#fm_description").value.trim();
+  if (!formId || !title || !description) { toast(t("management.formRequired"), "err"); return; }
+  const body = { formId, title, description, audience: $("#fm_aud").value };
+  if (kind === "case") body.requiresApproval = $("#fm_appr").checked;
+  else body.allowAttachments = $("#fm_att").checked;
+  const optype = kind === "operation" ? $("#fm_optype").value.trim() : "";
   if (optype) body.operationType = optype;
   const subset = [...document.querySelectorAll("[data-fs]")].filter((el) => el.checked).map((el) => el.getAttribute("data-fs"));
   if (kind === "case" && subset.length) body.fieldSubset = subset;
-  const schemaRaw = $("#fm_schema").value.trim();
+  const schemaRaw = kind === "operation" ? $("#fm_schema").value.trim() : "";
   if (schemaRaw) {
-    let parsed; try { parsed = JSON.parse(schemaRaw); } catch { toast("Property schema is not valid JSON", "err"); return; }
+    let parsed; try { parsed = JSON.parse(schemaRaw); } catch { toast(t("management.invalidPropertySchema"), "err"); return; }
     body.propertySchema = parsed;
   }
-  const r = await api("POST", `/api/admin/registries/${state.registry}/forms`, body);
+  const r = await api("POST", `/api/admin/registries/${state.registry}/${kind}-forms`, body);
   if (ok(r, `Form created → config v${r.data.version}`)) { await refreshMeta(); reManage(); }
 }
 
@@ -564,14 +573,17 @@ function manageCard(title, rows, onSubmit, btnLabel, onCancel) {
 
 /** Render a list and its create operation as one component. The editor replaces the list until saved or cancelled. */
 function selfContainedList(body, title, cols, rows, emptyMsg, actionLabel, createForm) {
-  const card = listCard(title, cols, rows, emptyMsg);
-  const showList = () => reManage();
-  card.append(h("div", { class: "list-actions" },
-    h("button", { class: "btn", onclick: () => {
-      card.replaceChildren(createForm(showList));
-      card.classList.add("editing");
-    } }, actionLabel)));
-  body.append(card);
+  const renderCard = () => {
+    const card = listCard(title, cols, rows, emptyMsg);
+    const showList = () => card.replaceWith(renderCard());
+    card.append(h("div", { class: "list-actions" },
+      h("button", { class: "btn", onclick: () => {
+        card.replaceChildren(createForm(showList));
+        card.classList.add("editing");
+      } }, actionLabel)));
+    return card;
+  };
+  body.append(renderCard());
 }
 
 /** A card with a table of current items. `cols` = [{header, get, cls?}]. */
@@ -631,9 +643,14 @@ async function caseDetailCard(tab, diary) {
   // Operations are a self-contained list. Workers can select operation forms;
   // customers can select any form available for acting on their own case.
   const isCustomer = tab === "customer" && state.identity.startsWith("customer:");
+  const splitForms = [
+    ...(m.caseForms || []).map((form) => ({ ...form, kind: "case" })),
+    ...(m.operationForms || []).map((form) => ({ ...form, kind: "operation" })),
+  ];
+  const configuredForms = m.caseForms || m.operationForms ? splitForms : (m.forms || []);
   const forms = tab === "worker" && state.identity.startsWith("worker:")
-    ? (m.forms || []).filter((f) => f.audience === "worker" && f.kind === "operation")
-    : isCustomer ? (m.forms || []).filter((f) => f.audience === "customer") : [];
+    ? configuredForms.filter((form) => (form.audience === "worker" || form.audience === "both") && form.kind === "operation")
+    : isCustomer ? configuredForms.filter((form) => form.audience === "customer" || form.audience === "both") : [];
   card.append(operationList(c, r.data.history, forms, isCustomer));
   return card;
 }
@@ -707,6 +724,7 @@ function caseFormBlock(f, c, onCancel) {
   const subset = f.fieldSubset || m.fields.map((x) => x.name);
   const defs = m.fields.filter((x) => subset.includes(x.name));
   const box = h("div", { class: "card", style: "background:var(--panel-2)" }, h("h3", null, f.title + (f.requiresApproval ? " (needs approval)" : "")));
+  if (f.description) box.append(h("p", { class: "hint" }, f.description));
   for (const d of defs) box.append(h("div", { class: "field" }, h("label", null, d.name), fieldInput(d)));
   const submit = h("button", { class: "btn sm", onclick: async () => {
     const fields = {};
@@ -723,6 +741,7 @@ function operationFormBlock(f, c, onCancel) {
   const schema = f.propertySchema || { properties: {}, required: [] };
   const props = Object.entries(schema.properties || {});
   const box = h("div", { class: "card", style: "background:var(--panel-2)" }, h("h3", null, f.title));
+  if (f.description) box.append(h("p", { class: "hint" }, f.description));
   for (const [name, spec] of props) {
     const req = (schema.required || []).includes(name);
     const input = spec.type === "boolean" ? h("select", { id: "op_" + name }, h("option", null, "false"), h("option", null, "true"))
