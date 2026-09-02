@@ -56,6 +56,19 @@ test("programmatically rendered portal chrome uses explicit translations", () =>
   }
 });
 
+test("cancelling one self-contained editor only restores its own list", () => {
+  const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+  assert.match(app, /const showList = \(\) => card\.replaceWith\(renderCard\(\)\)/);
+  assert.doesNotMatch(app, /const showList = \(\) => reManage\(\)/);
+});
+
+test("portal form chooser consumes split forms and includes the both audience", () => {
+  const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+  assert.match(app, /\.\.\.\(m\.operationForms \|\| \[\]\)\.map\(\(form\) => \(\{ \.\.\.form, kind: "operation" \}\)\)/);
+  assert.match(app, /form\.audience === "worker" \|\| form\.audience === "both"/);
+  assert.match(app, /form\.audience === "customer" \|\| form\.audience === "both"/);
+});
+
 test("locale storage failures are isolated from application startup", () => {
   const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
   assert.match(app, /function readStoredLocale\(\) \{\s*try \{ return localStorage\.getItem\("locale"\); \}\s*catch \{ return null; \}/);

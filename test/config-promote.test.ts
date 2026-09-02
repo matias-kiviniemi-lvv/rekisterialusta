@@ -79,6 +79,6 @@ test("reapplying config preserves translations while replacing form definitions"
   assert.equal(preserved?.title, "Översättning");
   assert.equal(
     Number((await platform.shared.get("SELECT COUNT(*) AS n FROM form_definitions WHERE registry_id = ?", [PERMIT_CONFIG.registryId]))?.n),
-    PERMIT_CONFIG.forms?.length ?? 0,
+    (PERMIT_CONFIG.caseForms?.length ?? 0) + (PERMIT_CONFIG.operationForms?.length ?? 0),
   );
 });

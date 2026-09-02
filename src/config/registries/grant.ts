@@ -41,21 +41,25 @@ export const GRANT_CONFIG: RegistryConfig = {
     ["under_review", "rejected"],
     ["granted", "paid"],
   ],
-  forms: [
+  caseForms: [
     {
       formId: "provide-iban",
-      kind: "case",
       audience: "customer",
       title: "Provide payment IBAN",
+      description: "Enter the bank account used for the grant payment.",
+      descriptions: { sourceLocale: "fi", values: { fi: "Anna avustuksen maksamiseen käytettävä pankkitili." } },
       titles: { sourceLocale: "fi", values: { fi: "Anna maksutilin IBAN" } },
       requiresApproval: false,
       fieldSubset: ["iban"],
     },
+  ],
+  operationForms: [
     {
       formId: "submit-receipt",
-      kind: "operation",
       audience: "customer",
       title: "Submit a receipt",
+      description: "Enter the receipt details and attach the receipt.",
+      descriptions: { sourceLocale: "fi", values: { fi: "Anna kuitin tiedot ja liitä kuitti." } },
       titles: { sourceLocale: "fi", values: { fi: "Toimita kuitti" } },
       operationType: "receipt",
       allowAttachments: true,

@@ -22,8 +22,10 @@ imports the SQL Server adapter when `DB_DIALECT=sqlserver`, and that adapter onl
 is not installed, nothing in the SQLite path ever touches it.
 
 ```bash
-npm ci --omit=optional        # or no install at all — node:sqlite is built in
-npm test                      # 73/73, no network, no mssql
+npm ci --omit=optional        # installs TypeScript/types; skips only optional mssql
+node --version                # must be >= 22.6; node:sqlite is built into Node
+npm test                      # always uses isolated, in-memory SQLite databases
+npm run typecheck
 npm run demo                  # end-to-end walkthrough on in-memory SQLite
 ```
 
@@ -43,6 +45,18 @@ export SQLSERVER_TRUST_CERT=true   # local self-signed cert
 # Each registry maps to its own database; create them first (operational step):
 #   CREATE DATABASE registry_shared; CREATE DATABASE registry_pool_a_permit; ...
 node --experimental-strip-types -e "import('./src/bootstrap.ts').then(m=>m.bootstrapFromEnv(m.fixedClock(new Date().toISOString())))"
+```
+
+The current `npm test` suite deliberately constructs in-memory SQLite adapters;
+setting `DB_DIALECT=sqlserver` does **not** redirect those unit and service tests.
+To smoke-test a live SQL Server, create the shared and registry databases, set
+the variables above, and run the bootstrap command. It connects, applies every
+migration, applies the sample configuration, and fails with a non-zero exit if
+bootstrap fails. The dialect/configuration tests can be run without a server:
+
+```bash
+node --test --experimental-strip-types \
+  test/dialect.test.ts test/sqlserver-config.test.ts test/sqlserver-migration-ddl.test.ts
 ```
 
 ### Env 3 — Azure SQL with RBAC (passwordless, managed identity)

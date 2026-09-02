@@ -24,6 +24,8 @@ import type { MigrationProgress } from "../migrations/runner.ts";
 import { registrySpineMigration } from "../migrations/0002_registry_spine.ts";
 import { m0004 } from "../migrations/0004_registry_forms.ts";
 import { m0006Registry, m0006Shared } from "../migrations/0006_localized_metadata.ts";
+import { m0007 } from "../migrations/0007_split_forms.ts";
+import { m0008 } from "../migrations/0008_form_audience_both.ts";
 import type { RegistryConfig, PlatformConfig } from "../config/registry-config.ts";
 import { normalizePath, levelOf } from "../domain/categories.ts";
 import { validateRegistryConfig } from "../config/validation.ts";
@@ -64,6 +66,7 @@ export async function applyRegistryConfig(
   migrationProgress?: MigrationProgress,
 ): Promise<{ version: number; addedColumns: string[] }> {
   validateRegistryConfig(config);
+  await migrate(shared, [m0007, m0008], now, migrationProgress);
   const ds = dialectFor(shared.dialect);
   const dr = dialectFor(regDb.dialect);
 
@@ -82,7 +85,12 @@ export async function applyRegistryConfig(
   // Form IDs are global keys in the shared database. Never let an upsert or a
   // replacement apply move a definition (and its translations) between
   // registries merely because two independently authored configs reuse an ID.
-  for (const form of config.forms ?? []) {
+  const hasSplitForms = config.caseForms !== undefined || config.operationForms !== undefined;
+  const forms = hasSplitForms ? [
+    ...(config.caseForms ?? []).map((form) => ({ ...form, kind: "case" as const })),
+    ...(config.operationForms ?? []).map((form) => ({ ...form, kind: "operation" as const })),
+  ] : [...(config.forms ?? [])];
+  for (const form of forms) {
     const owner = await shared.get("SELECT registry_id FROM form_definitions WHERE form_id = ?", [form.formId]);
     if (owner && String(owner.registry_id) !== config.registryId) {
       throw new Error(`form ${form.formId} belongs to registry ${String(owner.registry_id)}`);
@@ -133,7 +141,6 @@ export async function applyRegistryConfig(
   //    dependants must be removed before their parent definitions. The table is
   //    optional for compatibility with databases predating multilingual support.
   const hasFormTranslations = await tableExists(shared, "form_translations");
-  const forms = config.forms ?? [];
   const retainedFormIds = forms.map((form) => form.formId);
   const retainedClause = retainedFormIds.length
     ? ` AND form_id NOT IN (${retainedFormIds.map(() => "?").join(", ")})`
@@ -141,23 +148,30 @@ export async function applyRegistryConfig(
   const staleFormParams = [config.registryId, ...retainedFormIds];
   const formSql = ds.upsert({
     table: "form_definitions",
-    insertColumns: ["form_id", "registry_id", "kind", "audience", "title", "requires_approval", "field_subset", "property_schema", "allow_attachments", "operation_type"],
+    insertColumns: ["form_id", "registry_id", "kind", "audience", "title", "description", "requires_approval", "field_subset", "property_schema", "allow_attachments", "operation_type"],
     conflictColumns: ["form_id"],
-    updateColumns: ["registry_id", "kind", "audience", "title", "requires_approval", "field_subset", "property_schema", "allow_attachments", "operation_type"],
+    updateColumns: ["registry_id", "kind", "audience", "title", "description", "requires_approval", "field_subset", "property_schema", "allow_attachments", "operation_type"],
   });
   await shared.transaction(async (tx) => {
     for (const f of forms) {
       await tx.run(
         formSql,
         [
-          f.formId, config.registryId, f.kind, f.audience, f.title,
-          f.requiresApproval ? 1 : 0,
-          f.fieldSubset ? JSON.stringify(f.fieldSubset) : null,
-          f.propertySchema ? JSON.stringify(f.propertySchema) : null,
-          f.allowAttachments ? 1 : 0,
-          f.operationType ?? null,
+          f.formId, config.registryId, f.kind, f.audience, f.title, f.description || f.title,
+          f.kind === "case" && f.requiresApproval ? 1 : 0,
+          f.kind === "case" && f.fieldSubset ? JSON.stringify(f.fieldSubset) : null,
+          f.kind === "operation" && f.propertySchema ? JSON.stringify(f.propertySchema) : null,
+          f.kind === "operation" && f.allowAttachments ? 1 : 0,
+          f.kind === "operation" ? f.operationType ?? null : null,
         ],
       );
+      if (f.kind === "case") {
+        await tx.run(ds.upsert({ table: "case_form_definitions", insertColumns: ["form_id", "requires_approval", "field_subset"], conflictColumns: ["form_id"], updateColumns: ["requires_approval", "field_subset"] }), [f.formId, f.requiresApproval ? 1 : 0, f.fieldSubset ? JSON.stringify(f.fieldSubset) : null]);
+        await tx.run("DELETE FROM operation_form_definitions WHERE form_id = ?", [f.formId]);
+      } else {
+        await tx.run(ds.upsert({ table: "operation_form_definitions", insertColumns: ["form_id", "allow_attachments", "operation_type", "property_schema"], conflictColumns: ["form_id"], updateColumns: ["allow_attachments", "operation_type", "property_schema"] }), [f.formId, f.allowAttachments ? 1 : 0, f.operationType ?? null, f.propertySchema ? JSON.stringify(f.propertySchema) : null]);
+        await tx.run("DELETE FROM case_form_definitions WHERE form_id = ?", [f.formId]);
+      }
       if (hasFormTranslations) {
         const translationSql = ds.upsert({
           table: "form_translations",
@@ -182,6 +196,8 @@ export async function applyRegistryConfig(
         staleFormParams,
       );
     }
+    await tx.run(`DELETE FROM case_form_definitions WHERE form_id IN (SELECT form_id FROM form_definitions WHERE registry_id = ?${retainedClause})`, staleFormParams);
+    await tx.run(`DELETE FROM operation_form_definitions WHERE form_id IN (SELECT form_id FROM form_definitions WHERE registry_id = ?${retainedClause})`, staleFormParams);
     await tx.run(`DELETE FROM form_definitions WHERE registry_id = ?${retainedClause}`, staleFormParams);
     await tx.run("DELETE FROM rules WHERE registry_id = ?", [config.registryId]);
     for (const r of config.rules ?? []) {
@@ -220,7 +236,7 @@ export async function applyRegistryConfig(
       conflictColumns: ["registry_id", "version"],
       updateColumns: ["applied_at", "summary", "config_json"],
     }),
-    [config.registryId, version, now, `${config.fields.length} fields, ${config.states.length} states, ${(config.forms ?? []).length} forms, ${(config.rules ?? []).length} rules`, JSON.stringify(config)],
+    [config.registryId, version, now, `${config.fields.length} fields, ${config.states.length} states, ${forms.length} forms, ${(config.rules ?? []).length} rules`, JSON.stringify(config)],
   );
 
   return { version, addedColumns };

@@ -36,19 +36,28 @@ export interface StateDef {
 
 export type TransitionDef = readonly [from: string, to: string];
 
-export interface FormConfig {
+export interface FormBaseConfig {
   readonly formId: string;
-  readonly kind: "case" | "operation";
-  readonly audience: "worker" | "customer";
+  readonly audience: "worker" | "customer" | "both";
   readonly title: string;
+  /** Form-filling instructions shown before the fields. */
+  readonly description: string;
   readonly titles?: LocalizedText;
   readonly descriptions?: LocalizedText;
+}
+
+export interface CaseFormConfig extends FormBaseConfig {
   readonly requiresApproval?: boolean;
   readonly fieldSubset?: readonly string[];
+}
+
+export interface OperationFormConfig extends FormBaseConfig {
   readonly propertySchema?: ObjectSchema;
   readonly allowAttachments?: boolean;
   readonly operationType?: string;
 }
+
+export type FormConfig = (CaseFormConfig & { readonly kind: "case" }) | (OperationFormConfig & { readonly kind: "operation" });
 
 export interface RuleConfig {
   readonly ruleId: string;
@@ -70,6 +79,9 @@ export interface RegistryConfig {
   readonly fields: readonly RegistryFieldDef[];
   readonly states: readonly StateDef[];
   readonly transitions: readonly TransitionDef[];
+  readonly caseForms?: readonly CaseFormConfig[];
+  readonly operationForms?: readonly OperationFormConfig[];
+  /** @deprecated Accepted when importing older config artifacts. */
   readonly forms?: readonly FormConfig[];
   readonly rules?: readonly RuleConfig[];
   /** Config schema version, bumped as the definition evolves (promotion aid). */

@@ -101,12 +101,16 @@ export function validateRegistryConfig(config: RegistryConfig): void {
     if (!states.has(from) || !states.has(to)) throw new Error(`transition ${from} -> ${to} references unknown state`);
   }
   const formIds = new Set<string>();
-  for (const form of config.forms ?? []) {
+  const forms = [...(config.caseForms ?? []), ...(config.operationForms ?? []), ...(config.forms ?? [])];
+  for (const form of forms) {
     if (!form.formId.trim() || formIds.has(form.formId)) throw new Error(`invalid or duplicate form id ${form.formId}`);
     formIds.add(form.formId);
+    if (!form.title.trim()) throw new Error(`form ${form.formId} requires a title`);
+    if ("description" in form && !form.description.trim()) throw new Error(`form ${form.formId} requires a description`);
+    if (!new Set(["worker", "customer", "both"]).has(form.audience)) throw new Error(`form ${form.formId} has invalid audience`);
     if (form.titles) validateLocalizedText(form.titles, `form ${form.formId} title`);
     if (form.descriptions) validateLocalizedText(form.descriptions, `form ${form.formId} description`);
-    if (form.fieldSubset) {
+    if ("fieldSubset" in form && form.fieldSubset) {
       for (const name of form.fieldSubset) if (!names.has(name)) throw new Error(`form ${form.formId} references unknown field ${name}`);
     }
   }
