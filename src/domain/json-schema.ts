@@ -11,7 +11,11 @@
 
 export interface PropertySchema {
   readonly type: "string" | "number" | "integer" | "boolean";
-  readonly nullable?: boolean;
+  readonly minimum?: number;
+  readonly maximum?: number;
+  readonly pattern?: string;
+  /** Message shown when this property's value does not satisfy its constraints. */
+  readonly errorMessage?: string;
 }
 
 export interface ObjectSchema {
@@ -44,18 +48,38 @@ export function validate(schema: ObjectSchema, value: unknown): ValidationResult
   for (const [name, prop] of Object.entries(schema.properties)) {
     const present = name in obj;
     const v = obj[name];
-    if (!present || v === undefined) {
+    if (!present || v === undefined || (required.has(name) && (v === null || v === ""))) {
       if (required.has(name)) errors.push(`missing required property "${name}"`);
       continue;
     }
     if (v === null) {
-      if (!prop.nullable) errors.push(`property "${name}" may not be null`);
+      errors.push(`property "${name}" may not be null`);
       continue;
     }
-    if (!typeMatches(prop.type, v)) errors.push(`property "${name}" must be ${prop.type}`);
+    if (!typeMatches(prop.type, v)) {
+      errors.push(prop.errorMessage || `property "${name}" must be ${prop.type}`);
+      continue;
+    }
+    const constraintError = validateConstraints(prop, v);
+    if (constraintError) errors.push(prop.errorMessage || `property "${name}" ${constraintError}`);
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+function validateConstraints(prop: PropertySchema, value: unknown): string | undefined {
+  if ((prop.type === "number" || prop.type === "integer") && typeof value === "number") {
+    if (prop.minimum !== undefined && value < prop.minimum) return `must be at least ${prop.minimum}`;
+    if (prop.maximum !== undefined && value > prop.maximum) return `must be at most ${prop.maximum}`;
+  }
+  if (prop.type === "string" && prop.pattern !== undefined && typeof value === "string") {
+    try {
+      if (!new RegExp(prop.pattern).test(value)) return `must match pattern ${prop.pattern}`;
+    } catch {
+      return "has an invalid configured pattern";
+    }
+  }
+  return undefined;
 }
 
 function typeMatches(type: PropertySchema["type"], v: unknown): boolean {

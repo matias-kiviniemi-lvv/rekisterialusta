@@ -121,9 +121,23 @@ button.btn.danger { background: var(--danger); border-color: var(--danger); colo
 .hist .op:last-child { border-bottom: none; }
 .op-type { font-weight: 700; }
 .op-meta { color: var(--muted); font-size: 12px; }
+.operation-properties { display: grid; grid-template-columns: minmax(100px, max-content) 1fr; gap: 3px 14px; margin: 8px 0 0; font-size: 13px; }
+.operation-properties dt { color: var(--muted); font-weight: 700; }
+.operation-properties dd { margin: 0; overflow-wrap: anywhere; }
+.schema-properties { display: grid; gap: 10px; }
+.schema-property { display: grid; gap: 12px; padding: 12px; background: var(--panel-2); border: 1px solid var(--line); }
+.schema-primary { display: grid; grid-template-columns: minmax(180px, 2fr) minmax(140px, 1fr) auto; align-items: end; gap: 10px; }
+.schema-validation { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); align-items: end; gap: 10px; }
+.schema-actions { display: flex; }
+.schema-property .field { margin: 0; }
+.schema-property [hidden] { display: none; }
+.schema-check { min-height: 42px; font-size: 13px; }
+.schema-string + .schema-message { grid-column: span 2; }
+.schema-builder > .btn { align-self: flex-start; }
+.optional { color: var(--muted); font-weight: 400; }
 .empty { color: var(--muted); font-style: italic; padding: 12px 0; }
 .toast { position: fixed; right: 24px; bottom: 24px; background: var(--panel); border: 1px solid var(--line); border-left: 6px solid var(--brand-blue); border-radius: 2px; padding: 14px 18px; max-width: 400px; box-shadow: 0 12px 30px rgba(0,0,0,.18); font-size: 14px; z-index: 50; }
-.toast.err { border-left-color: var(--danger); }
+.toast.err { left: 50%; right: auto; text-align: center; transform: translateX(-50%); border-left-color: var(--danger); }
 .toast.ok { border-left-color: var(--brand-green); }
 .foot { display: flex; justify-content: center; align-items: center; gap: 16px; color: #fff; background: var(--brand-blue); font-size: 12px; text-align: center; padding: 26px 20px; }
 .foot-mark { display: grid; grid-template-columns: repeat(2, 10px); gap: 2px; flex: 0 0 auto; }
@@ -151,6 +165,8 @@ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 1
   .tabs button { flex: 1 1 auto; padding-inline: 10px; }
 }
 @media (max-width: 560px) {
+  .schema-primary, .schema-validation { grid-template-columns: 1fr; align-items: start; }
+  .schema-string + .schema-message { grid-column: auto; }
   .brand-logo { width: 230px; max-width: 100%; }
   main { padding: 30px 14px 48px; }
   .card { padding: 16px; overflow-x: auto; }

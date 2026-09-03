@@ -416,14 +416,14 @@ const MGMT_RENDERERS = {
       { header: t("management.audience"), get: (f) => audienceLabel(f.audience) },
       { header: t("management.titleColumn"), get: (f) => f.title },
       { header: t("management.approval"), get: (f) => f.requiresApproval ? t("management.required") : "—" },
-    ], m.caseForms || [], t("management.noCaseForms"), t("management.createCaseForm"), (cancel) => formCreateCard(m, "case", cancel));
+    ], m.caseForms || [], t("management.noCaseForms"), t("management.createCaseForm"), (cancel) => formCreateCard(m, "case", cancel), (form, cancel) => formCreateCard(m, "case", cancel, form));
     selfContainedList(body, t("management.operationForms"), [
       { header: t("management.formId"), cls: "mono", get: (f) => f.formId },
       { header: t("management.audience"), get: (f) => audienceLabel(f.audience) },
       { header: t("management.titleColumn"), get: (f) => f.title },
       { header: t("management.operationType"), get: (f) => f.operationType || "—" },
       { header: t("management.attachments"), get: (f) => f.allowAttachments ? t("common.yes") : "—" },
-    ], m.operationForms || [], t("management.noOperationForms"), t("management.createOperationForm"), (cancel) => formCreateCard(m, "operation", cancel));
+    ], m.operationForms || [], t("management.noOperationForms"), t("management.createOperationForm"), (cancel) => formCreateCard(m, "operation", cancel), (form, cancel) => formCreateCard(m, "operation", cancel, form));
   },
 
   async rules(body) {
@@ -491,28 +491,66 @@ const MGMT_RENDERERS = {
 
 // ---- Management create forms (Forms + Rules) -------------------------------
 
-function formCreateCard(m, kind, onCancel) {
+function schemaPropertyRow(name = "", spec = {}, required = false) {
+  const row = h("div", { class: "schema-property" },
+    h("div", { class: "schema-primary" },
+      h("div", { class: "field" }, h("label", null, t("management.propertyName")), h("input", { "data-schema-name": true, value: name, placeholder: "reason" })),
+      h("div", { class: "field" }, h("label", null, t("management.type")), h("select", { "data-schema-type": true },
+        ...["string", "number", "integer", "boolean"].map((type) => h("option", { value: type, selected: (spec.type || "string") === type }, type)))),
+      h("label", { class: "inline schema-check" }, h("input", { type: "checkbox", "data-schema-required": true, checked: required }), t("management.propertyRequired"))),
+    h("div", { class: "schema-validation" },
+      h("div", { class: "field schema-number" }, h("label", null, t("management.minimum")), h("input", { type: "number", step: "any", "data-schema-minimum": true, value: spec.minimum ?? "" })),
+      h("div", { class: "field schema-number" }, h("label", null, t("management.maximum")), h("input", { type: "number", step: "any", "data-schema-maximum": true, value: spec.maximum ?? "" })),
+      h("div", { class: "field schema-string" }, h("label", null, t("management.pattern")), h("input", { "data-schema-pattern": true, value: spec.pattern || "", placeholder: "^[A-Z]+$" })),
+      h("div", { class: "field schema-message" }, h("label", null, t("management.validationMessage")), h("input", { "data-schema-message": true, value: spec.errorMessage || "" }))),
+    h("div", { class: "schema-actions" },
+      h("button", { class: "btn sm ghost", type: "button", onclick: () => row.remove() }, t("management.removeProperty"))));
+  const updateConstraints = () => {
+    const type = row.querySelector("[data-schema-type]").value;
+    const supportsNumberValidation = type === "number" || type === "integer";
+    const supportsStringValidation = type === "string";
+    row.querySelectorAll(".schema-number").forEach((el) => (el.hidden = !supportsNumberValidation));
+    row.querySelector(".schema-string").hidden = !supportsStringValidation;
+    row.querySelector(".schema-message").hidden = !supportsNumberValidation && !supportsStringValidation;
+  };
+  row.querySelector("[data-schema-type]").addEventListener("change", updateConstraints);
+  updateConstraints();
+  return row;
+}
+
+function schemaBuilder(schema) {
+  const properties = Object.entries(schema?.properties || {});
+  const required = new Set(schema?.required || []);
+  const rows = h("div", { class: "schema-properties" }, ...properties.map(([name, spec]) => schemaPropertyRow(name, spec, required.has(name))));
+  return h("div", { class: "field schema-builder" },
+    h("label", null, t("management.properties")), rows,
+    h("button", { class: "btn sm ghost", type: "button", onclick: () => rows.append(schemaPropertyRow()) }, t("management.addProperty")));
+}
+
+function formCreateCard(m, kind, onCancel, existing = null) {
   const fieldChecks = m.fields.map((f) => h("label", { class: "inline" }, h("input", { type: "checkbox", "data-fs": f.name }), f.name));
+  for (const input of fieldChecks) input.querySelector("input").checked = existing?.fieldSubset?.includes(input.querySelector("input").dataset.fs) || false;
+  const audience = existing?.audience || "customer";
   return h("div", { class: "card" },
-    h("h3", null, kind === "case" ? t("management.createCaseForm") : t("management.createOperationForm")),
-    h("div", { class: "field" }, h("label", null, t("management.formId")), h("input", { id: "fm_id", placeholder: t("management.formIdPlaceholder") })),
-    h("div", { class: "field" }, h("label", null, t("management.titleColumn")), h("input", { id: "fm_title", placeholder: t("management.formTitlePlaceholder") })),
-    h("div", { class: "field" }, h("label", null, t("management.formDescription")), h("textarea", { id: "fm_description", rows: "3", placeholder: t("management.formDescriptionPlaceholder") })),
-    h("div", { class: "field" }, h("label", null, t("management.audience")), h("select", { id: "fm_aud" }, h("option", { value: "customer" }, t("management.audienceCustomer")), h("option", { value: "worker" }, t("management.audienceWorker")), h("option", { value: "both" }, t("management.audienceBoth")))),
+    h("h3", null, existing ? t("management.editForm") : kind === "case" ? t("management.createCaseForm") : t("management.createOperationForm")),
+    h("div", { class: "field" }, h("label", null, t("management.formId")), h("input", { id: "fm_id", value: existing?.formId || "", disabled: !!existing, placeholder: t("management.formIdPlaceholder") })),
+    h("div", { class: "field" }, h("label", null, t("management.titleColumn")), h("input", { id: "fm_title", value: existing?.title || "", placeholder: t("management.formTitlePlaceholder") })),
+    h("div", { class: "field" }, h("label", null, t("management.formDescription")), h("textarea", { id: "fm_description", rows: "3", placeholder: t("management.formDescriptionPlaceholder") }, existing?.description || "")),
+    h("div", { class: "field" }, h("label", null, t("management.audience")), h("select", { id: "fm_aud" }, h("option", { value: "customer", selected: audience === "customer" }, t("management.audienceCustomer")), h("option", { value: "worker", selected: audience === "worker" }, t("management.audienceWorker")), h("option", { value: "both", selected: audience === "both" }, t("management.audienceBoth")))),
     ...(kind === "case" ? [
-      h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_appr" }), t("management.requiresApproval")),
+      h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_appr", checked: existing?.requiresApproval === true }), t("management.requiresApproval")),
       h("div", { class: "field" }, h("label", null, t("management.fieldSubset")), h("div", { class: "inline wrap" }, ...(fieldChecks.length ? fieldChecks : [h("span", { class: "op-meta" }, t("management.noFieldsDefined"))]))),
     ] : [
-      h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_att" }), t("management.allowAttachments")),
-      h("div", { class: "field" }, h("label", null, t("management.operationType")), h("input", { id: "fm_optype", placeholder: t("management.operationTypePlaceholder") })),
-      h("div", { class: "field" }, h("label", null, t("management.propertySchema")), h("textarea", { id: "fm_schema", rows: "5", placeholder: '{ "type": "object", "properties": { "reason": { "type": "string" } } }' })),
+      h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_att", checked: existing?.allowAttachments === true }), t("management.allowAttachments")),
+      h("div", { class: "field" }, h("label", null, t("management.operationType")), h("input", { id: "fm_optype", value: existing?.operationType || "", placeholder: t("management.operationTypePlaceholder") })),
+      schemaBuilder(existing?.propertySchema),
     ]),
     h("div", { class: "inline" },
-      h("button", { class: "btn", onclick: (event) => submitForm(kind, event.currentTarget.closest(".card")) }, t("management.createForm")),
+      h("button", { class: "btn", onclick: (event) => submitForm(kind, event.currentTarget.closest(".card"), !!existing) }, existing ? t("common.save") : t("management.createForm")),
       h("button", { class: "btn ghost", onclick: onCancel }, t("common.cancel"))));
 }
 
-async function submitForm(kind, editor) {
+async function submitForm(kind, editor, editing = false) {
   const field = (selector) => editor.querySelector(selector);
   const formId = field("#fm_id").value.trim();
   const title = field("#fm_title").value.trim();
@@ -525,13 +563,31 @@ async function submitForm(kind, editor) {
   if (optype) body.operationType = optype;
   const subset = [...editor.querySelectorAll("[data-fs]")].filter((el) => el.checked).map((el) => el.getAttribute("data-fs"));
   if (kind === "case" && subset.length) body.fieldSubset = subset;
-  const schemaRaw = kind === "operation" ? field("#fm_schema").value.trim() : "";
-  if (schemaRaw) {
-    let parsed; try { parsed = JSON.parse(schemaRaw); } catch { toast(t("management.invalidPropertySchema"), "err"); return; }
-    body.propertySchema = parsed;
+  if (kind === "operation") {
+    const properties = {}; const required = [];
+    for (const row of editor.querySelectorAll(".schema-property")) {
+      const name = row.querySelector("[data-schema-name]").value.trim();
+      if (!name) { toast(t("management.propertyNameRequired"), "err"); return; }
+      if (properties[name]) { toast(t("management.duplicateProperty", { name }), "err"); return; }
+      const spec = { type: row.querySelector("[data-schema-type]").value };
+      const supportsNumberValidation = spec.type === "number" || spec.type === "integer";
+      const supportsStringValidation = spec.type === "string";
+      const minimum = supportsNumberValidation ? row.querySelector("[data-schema-minimum]").value : "";
+      const maximum = supportsNumberValidation ? row.querySelector("[data-schema-maximum]").value : "";
+      const pattern = supportsStringValidation ? row.querySelector("[data-schema-pattern]").value : "";
+      const errorMessage = row.querySelector("[data-schema-message]").value.trim();
+      if (minimum !== "") spec.minimum = Number(minimum);
+      if (maximum !== "") spec.maximum = Number(maximum);
+      if (spec.minimum !== undefined && spec.maximum !== undefined && spec.minimum > spec.maximum) { toast(t("management.invalidRange", { name }), "err"); return; }
+      if (pattern) { try { new RegExp(pattern); } catch { toast(t("management.invalidPattern", { name }), "err"); return; } spec.pattern = pattern; }
+      if ((supportsNumberValidation || supportsStringValidation) && errorMessage) spec.errorMessage = errorMessage;
+      properties[name] = spec;
+      if (row.querySelector("[data-schema-required]").checked) required.push(name);
+    }
+    body.propertySchema = { type: "object", properties, required, additionalProperties: false };
   }
   const r = await api("POST", `/api/admin/registries/${state.registry}/${kind}-forms`, body);
-  if (ok(r, `Form created → config v${r.data.version}`)) { await refreshMeta(); reManage(); }
+  if (ok(r, `${editing ? "Form saved" : "Form created"} → config v${r.data.version}`)) { await refreshMeta(); reManage(); }
 }
 
 function ruleCreateCard() {
@@ -573,10 +629,11 @@ function manageCard(title, rows, onSubmit, btnLabel, onCancel) {
 }
 
 /** Render a list and its create operation as one component. The editor replaces the list until saved or cancelled. */
-function selfContainedList(body, title, cols, rows, emptyMsg, actionLabel, createForm) {
+function selfContainedList(body, title, cols, rows, emptyMsg, actionLabel, createForm, editForm) {
   const renderCard = () => {
-    const card = listCard(title, cols, rows, emptyMsg);
     const showList = () => card.replaceWith(renderCard());
+    const displayCols = editForm ? [...cols, { header: "", get: (row) => h("button", { class: "btn sm ghost", onclick: () => { card.replaceChildren(editForm(row, showList)); card.classList.add("editing"); } }, t("common.edit")) }] : cols;
+    const card = listCard(title, displayCols, rows, emptyMsg);
     card.append(h("div", { class: "list-actions" },
       h("button", { class: "btn", onclick: () => {
         card.replaceChildren(createForm(showList));
@@ -698,9 +755,17 @@ async function workerActions(m, c, history) {
 function operationList(c, history, forms, allCustomerForms = false) {
   const card = h("div", { class: "card operation-list" }, h("h3", null, `${t("case.operations")} (${history.length})`));
   const hist = h("div", { class: "hist", "aria-label": t("case.history") });
-  for (const op of history) hist.append(h("div", { class: "op" },
-    h("span", { class: "op-type" }, `#${op.operationId} ${op.type}`), " ",
-    h("span", { class: "op-meta" }, `${op.direction} · by ${op.actorKind}${op.comment ? " · " + op.comment : ""}`)));
+  for (const op of history) {
+    const item = h("div", { class: "op" },
+      h("span", { class: "op-type" }, `#${op.operationId} ${op.type}`), " ",
+      h("span", { class: "op-meta" }, `${op.direction} · by ${op.actorKind}${op.comment ? " · " + op.comment : ""}`));
+    if (op.properties && Object.keys(op.properties).length) {
+      const values = h("dl", { class: "operation-properties" });
+      for (const [name, value] of Object.entries(op.properties)) values.append(h("dt", null, name), h("dd", null, value === null ? "—" : String(value)));
+      item.append(values);
+    }
+    hist.append(item);
+  }
   card.append(hist);
 
   if (forms.length) {
@@ -745,9 +810,10 @@ function operationFormBlock(f, c, onCancel) {
   if (f.description) box.append(h("p", { class: "hint" }, f.description));
   for (const [name, spec] of props) {
     const req = (schema.required || []).includes(name);
-    const input = spec.type === "boolean" ? h("select", { id: "op_" + name }, h("option", null, "false"), h("option", null, "true"))
-      : h("input", { id: "op_" + name, type: spec.type === "integer" || spec.type === "number" ? "number" : "text" });
-    box.append(h("div", { class: "field" }, h("label", null, name, req ? h("span", { class: "req" }, " *") : ""), input));
+    const attrs = { id: "op_" + name, required: req, min: spec.minimum, max: spec.maximum, pattern: spec.pattern, title: spec.errorMessage };
+    const input = spec.type === "boolean" ? h("select", attrs, h("option", { value: "" }, "—"), h("option", { value: "false" }, "false"), h("option", { value: "true" }, "true"))
+      : h("input", { ...attrs, type: spec.type === "integer" || spec.type === "number" ? "number" : "text", step: spec.type === "number" ? "any" : spec.type === "integer" ? "1" : null });
+    box.append(h("div", { class: "field" }, h("label", null, name, req ? h("span", { class: "req" }, ` · ${t("form.required")}`) : h("span", { class: "optional" }, ` · ${t("form.optional")}`)), input));
   }
   if (f.allowAttachments) box.append(h("div", { class: "field" },
     h("label", null, "Attachment filename"), h("input", { id: "op_att_name", placeholder: "deed.txt" }),
@@ -758,6 +824,10 @@ function operationFormBlock(f, c, onCancel) {
       const el = $("#op_" + name); if (!el || el.value === "") continue;
       properties[name] = spec.type === "boolean" ? el.value === "true" : (spec.type === "integer" || spec.type === "number") ? Number(el.value) : el.value;
     }
+    const missing = props.find(([name]) => (schema.required || []).includes(name) && !$("#op_" + name)?.value);
+    if (missing) { toast(t("operation.requiredProperty", { name: missing[0] }), "err"); $("#op_" + missing[0]).focus(); return; }
+    const invalid = props.find(([name]) => $("#op_" + name)?.value && !$("#op_" + name).checkValidity());
+    if (invalid) { toast(invalid[1].errorMessage || t("operation.invalidProperty", { name: invalid[0] }), "err"); $("#op_" + invalid[0]).focus(); return; }
     const body = { diaryNumber: c.diaryNumber, properties };
     if (f.allowAttachments && $("#op_att_name") && $("#op_att_name").value) {
       body.attachments = [{ filename: $("#op_att_name").value, contentType: "text/plain", base64: btoa($("#op_att_body").value || "") }];

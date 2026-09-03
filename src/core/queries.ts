@@ -43,6 +43,7 @@ export interface OperationView {
   direction: string;
   type: string;
   subtype: string | null;
+  properties: unknown | null;
   comment: string | null;
   actorKind: string;
 }
@@ -70,7 +71,7 @@ export async function getCaseByDiaryNumber(registryDb: Db, diaryNumber: string):
 
 export async function getCaseHistory(registryDb: Db, caseKey: bigint): Promise<OperationView[]> {
   const rows = await registryDb.all(
-    `SELECT operation_id, created, direction, type, subtype, comment, actor_kind
+    `SELECT operation_id, created, direction, type, subtype, properties, comment, actor_kind
        FROM operations WHERE case_key = ? ORDER BY operation_id`,
     [caseKey],
   );
@@ -80,6 +81,7 @@ export async function getCaseHistory(registryDb: Db, caseKey: bigint): Promise<O
     direction: String(r.direction),
     type: String(r.type),
     subtype: r.subtype === null ? null : String(r.subtype),
+    properties: r.properties === null ? null : JSON.parse(String(r.properties)),
     comment: r.comment === null ? null : String(r.comment),
     actorKind: String(r.actor_kind),
   }));
@@ -190,12 +192,13 @@ function toPublishedCaseView(row: Record<string, unknown>): PublishedCaseView {
 
 export async function getPublishedHistory(registryDb: Db, caseKey: bigint): Promise<OperationView[]> {
   const rows = await registryDb.all(
-    `SELECT operation_id, created, direction, type, subtype, comment, 'published' AS actor_kind
+    `SELECT operation_id, created, direction, type, subtype, properties, comment, 'published' AS actor_kind
        FROM published_operations WHERE case_key = ? ORDER BY operation_id`,
     [caseKey],
   );
   return rows.map((r) => ({
     operationId: Number(r.operation_id), created: String(r.created), direction: String(r.direction), type: String(r.type),
-    subtype: r.subtype === null ? null : String(r.subtype), comment: r.comment === null ? null : String(r.comment), actorKind: "published",
+    subtype: r.subtype === null ? null : String(r.subtype), properties: r.properties === null ? null : JSON.parse(String(r.properties)),
+    comment: r.comment === null ? null : String(r.comment), actorKind: "published",
   }));
 }
