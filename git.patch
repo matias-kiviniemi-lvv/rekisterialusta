@@ -1,122 +1,8 @@
 diff --git a/public/app.js b/public/app.js
-index 4abba7a88b0c13a4ec7f24602f326d89b82e1db2..e160fdcc2b3a445673be924dd3e2484591ecbe6b 100644
+index e160fdcc2b3a445673be924dd3e2484591ecbe6b..0d3cdcc152cc141e6d37638111d991228109fdf3 100644
 --- a/public/app.js
 +++ b/public/app.js
-@@ -500,53 +500,54 @@ function schemaPropertyRow(name = "", spec = {}, required = false) {
-       h("label", { class: "inline schema-check" }, h("input", { type: "checkbox", "data-schema-required": true, checked: required }), t("management.propertyRequired"))),
-     h("div", { class: "schema-validation" },
-       h("div", { class: "field schema-number" }, h("label", null, t("management.minimum")), h("input", { type: "number", step: "any", "data-schema-minimum": true, value: spec.minimum ?? "" })),
-       h("div", { class: "field schema-number" }, h("label", null, t("management.maximum")), h("input", { type: "number", step: "any", "data-schema-maximum": true, value: spec.maximum ?? "" })),
-       h("div", { class: "field schema-string" }, h("label", null, t("management.pattern")), h("input", { "data-schema-pattern": true, value: spec.pattern || "", placeholder: "^[A-Z]+$" })),
-       h("div", { class: "field schema-message" }, h("label", null, t("management.validationMessage")), h("input", { "data-schema-message": true, value: spec.errorMessage || "" }))),
-     h("div", { class: "schema-actions" },
-       h("button", { class: "btn sm ghost", type: "button", onclick: () => row.remove() }, t("management.removeProperty"))));
-   const updateConstraints = () => {
-     const type = row.querySelector("[data-schema-type]").value;
-     const supportsNumberValidation = type === "number" || type === "integer";
-     const supportsStringValidation = type === "string";
-     row.querySelectorAll(".schema-number").forEach((el) => (el.hidden = !supportsNumberValidation));
-     row.querySelector(".schema-string").hidden = !supportsStringValidation;
-     row.querySelector(".schema-message").hidden = !supportsNumberValidation && !supportsStringValidation;
-   };
-   row.querySelector("[data-schema-type]").addEventListener("change", updateConstraints);
-   updateConstraints();
-   return row;
- }
- 
- function schemaBuilder(schema) {
-   const properties = Object.entries(schema?.properties || {});
-   const required = new Set(schema?.required || []);
-   const rows = h("div", { class: "schema-properties" }, ...properties.map(([name, spec]) => schemaPropertyRow(name, spec, required.has(name))));
--  return h("div", { class: "field schema-builder" },
-+  const builder = h("div", { class: "field schema-builder", "data-schema-configured": schema != null ? "true" : "false" },
-     h("label", null, t("management.properties")), rows,
--    h("button", { class: "btn sm ghost", type: "button", onclick: () => rows.append(schemaPropertyRow()) }, t("management.addProperty")));
-+    h("button", { class: "btn sm ghost", type: "button", onclick: () => { builder.dataset.schemaConfigured = "true"; rows.append(schemaPropertyRow()); } }, t("management.addProperty")));
-+  return builder;
- }
- 
- function formCreateCard(m, kind, onCancel, existing = null) {
-   const fieldChecks = m.fields.map((f) => h("label", { class: "inline" }, h("input", { type: "checkbox", "data-fs": f.name }), f.name));
-   for (const input of fieldChecks) input.querySelector("input").checked = existing?.fieldSubset?.includes(input.querySelector("input").dataset.fs) || false;
-   const audience = existing?.audience || "customer";
-   return h("div", { class: "card" },
-     h("h3", null, existing ? t("management.editForm") : kind === "case" ? t("management.createCaseForm") : t("management.createOperationForm")),
-     h("div", { class: "field" }, h("label", null, t("management.formId")), h("input", { id: "fm_id", value: existing?.formId || "", disabled: !!existing, placeholder: t("management.formIdPlaceholder") })),
-     h("div", { class: "field" }, h("label", null, t("management.titleColumn")), h("input", { id: "fm_title", value: existing?.title || "", placeholder: t("management.formTitlePlaceholder") })),
-     h("div", { class: "field" }, h("label", null, t("management.formDescription")), h("textarea", { id: "fm_description", rows: "3", placeholder: t("management.formDescriptionPlaceholder") }, existing?.description || "")),
-     h("div", { class: "field" }, h("label", null, t("management.audience")), h("select", { id: "fm_aud" }, h("option", { value: "customer", selected: audience === "customer" }, t("management.audienceCustomer")), h("option", { value: "worker", selected: audience === "worker" }, t("management.audienceWorker")), h("option", { value: "both", selected: audience === "both" }, t("management.audienceBoth")))),
-     ...(kind === "case" ? [
-       h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_appr", checked: existing?.requiresApproval === true }), t("management.requiresApproval")),
-       h("div", { class: "field" }, h("label", null, t("management.fieldSubset")), h("div", { class: "inline wrap" }, ...(fieldChecks.length ? fieldChecks : [h("span", { class: "op-meta" }, t("management.noFieldsDefined"))]))),
-     ] : [
-       h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_att", checked: existing?.allowAttachments === true }), t("management.allowAttachments")),
-       h("div", { class: "field" }, h("label", null, t("management.operationType")), h("input", { id: "fm_optype", value: existing?.operationType || "", placeholder: t("management.operationTypePlaceholder") })),
-       schemaBuilder(existing?.propertySchema),
-     ]),
-     h("div", { class: "inline" },
-       h("button", { class: "btn", onclick: (event) => submitForm(kind, event.currentTarget.closest(".card"), !!existing) }, existing ? t("common.save") : t("management.createForm")),
-       h("button", { class: "btn ghost", onclick: onCancel }, t("common.cancel"))));
- }
- 
-@@ -562,51 +563,52 @@ async function submitForm(kind, editor, editing = false) {
-   const optype = kind === "operation" ? field("#fm_optype").value.trim() : "";
-   if (optype) body.operationType = optype;
-   const subset = [...editor.querySelectorAll("[data-fs]")].filter((el) => el.checked).map((el) => el.getAttribute("data-fs"));
-   if (kind === "case" && subset.length) body.fieldSubset = subset;
-   if (kind === "operation") {
-     const properties = {}; const required = [];
-     for (const row of editor.querySelectorAll(".schema-property")) {
-       const name = row.querySelector("[data-schema-name]").value.trim();
-       if (!name) { toast(t("management.propertyNameRequired"), "err"); return; }
-       if (properties[name]) { toast(t("management.duplicateProperty", { name }), "err"); return; }
-       const spec = { type: row.querySelector("[data-schema-type]").value };
-       const supportsNumberValidation = spec.type === "number" || spec.type === "integer";
-       const supportsStringValidation = spec.type === "string";
-       const minimum = supportsNumberValidation ? row.querySelector("[data-schema-minimum]").value : "";
-       const maximum = supportsNumberValidation ? row.querySelector("[data-schema-maximum]").value : "";
-       const pattern = supportsStringValidation ? row.querySelector("[data-schema-pattern]").value : "";
-       const errorMessage = row.querySelector("[data-schema-message]").value.trim();
-       if (minimum !== "") spec.minimum = Number(minimum);
-       if (maximum !== "") spec.maximum = Number(maximum);
-       if (spec.minimum !== undefined && spec.maximum !== undefined && spec.minimum > spec.maximum) { toast(t("management.invalidRange", { name }), "err"); return; }
-       if (pattern) { try { new RegExp(pattern); } catch { toast(t("management.invalidPattern", { name }), "err"); return; } spec.pattern = pattern; }
-       if ((supportsNumberValidation || supportsStringValidation) && errorMessage) spec.errorMessage = errorMessage;
-       properties[name] = spec;
-       if (row.querySelector("[data-schema-required]").checked) required.push(name);
-     }
--    body.propertySchema = { type: "object", properties, required, additionalProperties: false };
-+    const schemaConfigured = editor.querySelector(".schema-builder")?.dataset.schemaConfigured === "true";
-+    if (schemaConfigured || Object.keys(properties).length) body.propertySchema = { type: "object", properties, required, additionalProperties: false };
-   }
-   const r = await api("POST", `/api/admin/registries/${state.registry}/${kind}-forms`, body);
-   if (ok(r, `${editing ? "Form saved" : "Form created"} → config v${r.data.version}`)) { await refreshMeta(); reManage(); }
- }
- 
- function ruleCreateCard() {
-   const actions = ["set_state", "update_values", "create_operation", "notify_customer", "send_to_integration", "export"];
-   return h("div", { class: "card" },
-     h("h3", null, "Create rule"),
-     h("div", { class: "field" }, h("label", null, "Rule ID"), h("input", { id: "rl_id", placeholder: "e.g. auto_publish_on_decided" })),
-     h("div", { class: "row" },
-       h("div", { class: "col field" }, h("label", null, "On transition to state"), h("select", { id: "rl_to" }, h("option", { value: "" }, "(any state)"), ...meta().states.map((s) => h("option", { value: s.id }, s.name)))),
-       h("div", { class: "col field" }, h("label", null, "Action type"), h("select", { id: "rl_action" }, ...actions.map((a) => h("option", null, a))))),
-     h("div", { class: "field" }, h("label", null, "Action params JSON"), h("textarea", { id: "rl_params", rows: "3", placeholder: '{ "toState": "published" }' })),
-     h("div", { class: "field" }, h("label", null, "Condition JSON — optional"), h("textarea", { id: "rl_cond", rows: "3", placeholder: '{ "field": "fee_paid", "equals": true }' })),
-     h("div", { class: "field" }, h("label", null, "Ordering"), h("input", { id: "rl_order", type: "number", value: "0" })),
-     h("button", { class: "btn", onclick: submitRule }, "Create rule"));
- }
- 
- async function submitRule() {
-   const ruleId = $("#rl_id").value.trim();
-   if (!ruleId) { toast("Rule ID is required", "err"); return; }
-   const body = { ruleId, actionType: $("#rl_action").value, ordering: Number($("#rl_order").value || 0) };
-   const to = $("#rl_to").value; if (to) body.onToState = to;
-   const paramsRaw = $("#rl_params").value.trim();
-@@ -788,63 +790,70 @@ function operationList(c, history, forms, allCustomerForms = false) {
- function caseFormBlock(f, c, onCancel) {
-   const m = meta();
-   const subset = f.fieldSubset || m.fields.map((x) => x.name);
+@@ -793,67 +793,82 @@ function caseFormBlock(f, c, onCancel) {
    const defs = m.fields.filter((x) => subset.includes(x.name));
    const box = h("div", { class: "card", style: "background:var(--panel-2)" }, h("h3", null, f.title + (f.requiresApproval ? " (needs approval)" : "")));
    if (f.description) box.append(h("p", { class: "hint" }, f.description));
@@ -139,11 +25,16 @@ index 4abba7a88b0c13a4ec7f24602f326d89b82e1db2..e160fdcc2b3a445673be924dd3e24845
    if (f.description) box.append(h("p", { class: "hint" }, f.description));
    for (const [name, spec] of props) {
      const req = (schema.required || []).includes(name);
--    const attrs = { id: "op_" + name, required: req, min: spec.minimum, max: spec.maximum, pattern: spec.pattern, title: spec.errorMessage };
-+    const attrs = { id: "op_" + name, required: req, min: spec.minimum, max: spec.maximum, title: spec.errorMessage };
+     const attrs = { id: "op_" + name, required: req, min: spec.minimum, max: spec.maximum, title: spec.errorMessage };
      const input = spec.type === "boolean" ? h("select", attrs, h("option", { value: "" }, "—"), h("option", { value: "false" }, "false"), h("option", { value: "true" }, "true"))
        : h("input", { ...attrs, type: spec.type === "integer" || spec.type === "number" ? "number" : "text", step: spec.type === "number" ? "any" : spec.type === "integer" ? "1" : null });
-     box.append(h("div", { class: "field" }, h("label", null, name, req ? h("span", { class: "req" }, ` · ${t("form.required")}`) : h("span", { class: "optional" }, ` · ${t("form.optional")}`)), input));
+-    box.append(h("div", { class: "field" }, h("label", null, name, req ? h("span", { class: "req" }, ` · ${t("form.required")}`) : h("span", { class: "optional" }, ` · ${t("form.optional")}`)), input));
++    const status = req
++      ? h("span", { class: "req", "aria-live": "polite" }, ` · ${t("form.required")}`)
++      : h("span", { class: "optional", "aria-live": "polite" }, ` · ${t("form.optional")}`);
++    const validate = () => validateOperationProperty(name, spec, input, status, req);
++    input.addEventListener("blur", validate);
++    box.append(h("div", { class: "field" }, h("label", { for: attrs.id }, name, status), input));
    }
    if (f.allowAttachments) box.append(h("div", { class: "field" },
      h("label", null, "Attachment filename"), h("input", { id: "op_att_name", placeholder: "deed.txt" }),
@@ -154,18 +45,20 @@ index 4abba7a88b0c13a4ec7f24602f326d89b82e1db2..e160fdcc2b3a445673be924dd3e24845
        const el = $("#op_" + name); if (!el || el.value === "") continue;
        properties[name] = spec.type === "boolean" ? el.value === "true" : (spec.type === "integer" || spec.type === "number") ? Number(el.value) : el.value;
      }
-     const missing = props.find(([name]) => (schema.required || []).includes(name) && !$("#op_" + name)?.value);
-     if (missing) { toast(t("operation.requiredProperty", { name: missing[0] }), "err"); $("#op_" + missing[0]).focus(); return; }
--    const invalid = props.find(([name]) => $("#op_" + name)?.value && !$("#op_" + name).checkValidity());
-+    const invalid = props.find(([name, spec]) => {
-+      const input = $("#op_" + name);
-+      if (!input?.value || !input.checkValidity()) return !!input?.value && !input.checkValidity();
-+      if (spec.type === "string" && spec.pattern) {
-+        try { return !new RegExp(spec.pattern).test(input.value); } catch { return true; }
-+      }
-+      return false;
-+    });
-     if (invalid) { toast(invalid[1].errorMessage || t("operation.invalidProperty", { name: invalid[0] }), "err"); $("#op_" + invalid[0]).focus(); return; }
+-    const missing = props.find(([name]) => (schema.required || []).includes(name) && !$("#op_" + name)?.value);
+-    if (missing) { toast(t("operation.requiredProperty", { name: missing[0] }), "err"); $("#op_" + missing[0]).focus(); return; }
+     const invalid = props.find(([name, spec]) => {
+       const input = $("#op_" + name);
+-      if (!input?.value || !input.checkValidity()) return !!input?.value && !input.checkValidity();
+-      if (spec.type === "string" && spec.pattern) {
+-        try { return !new RegExp(spec.pattern).test(input.value); } catch { return true; }
+-      }
+-      return false;
++      const status = input?.previousElementSibling?.querySelector("span");
++      return input && status && !validateOperationProperty(name, spec, input, status, (schema.required || []).includes(name));
+     });
+-    if (invalid) { toast(invalid[1].errorMessage || t("operation.invalidProperty", { name: invalid[0] }), "err"); $("#op_" + invalid[0]).focus(); return; }
++    if (invalid) { $("#op_" + invalid[0]).focus(); return; }
      const body = { diaryNumber: c.diaryNumber, properties };
      if (f.allowAttachments && $("#op_att_name") && $("#op_att_name").value) {
        body.attachments = [{ filename: $("#op_att_name").value, contentType: "text/plain", base64: btoa($("#op_att_body").value || "") }];
@@ -178,6 +71,21 @@ index 4abba7a88b0c13a4ec7f24602f326d89b82e1db2..e160fdcc2b3a445673be924dd3e24845
    return box;
  }
  
++function validateOperationProperty(name, spec, input, status, required) {
++  let message = "";
++  if (required && !input.value) message = t("operation.requiredProperty", { name });
++  else if (input.value && !input.checkValidity()) message = spec.errorMessage || t("operation.invalidProperty", { name });
++  else if (input.value && spec.type === "string" && spec.pattern) {
++    try { if (!new RegExp(spec.pattern).test(input.value)) message = spec.errorMessage || t("operation.invalidProperty", { name }); }
++    catch { message = spec.errorMessage || t("operation.invalidProperty", { name }); }
++  }
++
++  status.className = message ? "validation-error" : required ? "req" : "optional";
++  status.textContent = message ? ` · ${message}` : ` · ${t(required ? "form.required" : "form.optional")}`;
++  input.setAttribute("aria-invalid", String(Boolean(message)));
++  return !message;
++}
++
  function categorySelect() {
    return h("select", { id: "cat_sel" }, ...meta().categories.map((c) => h("option", { value: c.code }, `${c.code} — ${c.name}`)));
  }
@@ -186,403 +94,131 @@ index 4abba7a88b0c13a4ec7f24602f326d89b82e1db2..e160fdcc2b3a445673be924dd3e24845
  }
  
  boot().catch((e) => { console.error(e); toast(t("error.startFailed", { message: e.message }), "err"); });
-diff --git a/src/config/validation.ts b/src/config/validation.ts
-index 77c62ead4505c8b512bb62fc4a2da1defa64b2f2..83f8be032b081b69c56a0f55473232890031e081 100644
---- a/src/config/validation.ts
-+++ b/src/config/validation.ts
-@@ -1,30 +1,31 @@
- import type { RegistryConfig, RuleConfig } from "./registry-config.ts";
- import type { RegistryFieldDef } from "./registry-catalog.ts";
- import type { Condition } from "../domain/rule-types.ts";
- import { isWithin, normalizePath } from "../domain/categories.ts";
- import { validateLocalizedText } from "./localization.ts";
-+import { isSafePattern } from "../domain/json-schema.ts";
- 
- const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
- 
- export function assertIdentifier(value: string, label = "identifier"): void {
-   if (!IDENTIFIER.test(value)) throw new Error(`${label} is not a safe SQL identifier: ${value}`);
- }
- 
- function assertGovernedField(field: RegistryFieldDef): void {
-   assertIdentifier(field.name, "field name");
-   if (!field.legalBasis.trim()) throw new Error(`field ${field.name} requires legalBasis`);
-   if (!field.purpose.trim()) throw new Error(`field ${field.name} requires purpose`);
-   if (!field.retentionPolicy.trim()) throw new Error(`field ${field.name} requires retentionPolicy`);
-   if (!new Set(["public", "normal", "sensitive", "restricted"]).has(field.sensitivity)) {
-     throw new Error(`field ${field.name} has invalid sensitivity`);
-   }
-   if (field.labels) validateLocalizedText(field.labels, `field ${field.name} label`);
-   if (field.helpText) validateLocalizedText(field.helpText, `field ${field.name} help text`);
- }
- 
- function assertCondition(condition: Condition | undefined, fields: ReadonlySet<string>, roots: readonly string[]): void {
-   if (condition === undefined || condition === null) return;
-   if ("all" in condition) {
-     for (const item of condition.all) assertCondition(item, fields, roots);
-     return;
-   }
-@@ -88,41 +89,48 @@ export function validateRegistryConfig(config: RegistryConfig): void {
-     assertGovernedField(field);
-     if (names.has(field.name)) throw new Error(`duplicate field ${field.name}`);
-     names.add(field.name);
-     fieldDefs.set(field.name, field);
-   }
- 
-   const states = new Set(config.states.map((s) => s.id));
-   if (states.size !== config.states.length) throw new Error("duplicate state id");
-   for (const state of config.states) {
-     if (state.labels) validateLocalizedText(state.labels, `state ${state.id} label`);
-     if (state.descriptions) validateLocalizedText(state.descriptions, `state ${state.id} description`);
-   }
-   for (const [from, to] of config.transitions) {
-     if (!states.has(from) || !states.has(to)) throw new Error(`transition ${from} -> ${to} references unknown state`);
-   }
-   const formIds = new Set<string>();
-   const forms = [...(config.caseForms ?? []), ...(config.operationForms ?? []), ...(config.forms ?? [])];
-   for (const form of forms) {
-     if (!form.formId.trim() || formIds.has(form.formId)) throw new Error(`invalid or duplicate form id ${form.formId}`);
-     formIds.add(form.formId);
-     if (!form.title.trim()) throw new Error(`form ${form.formId} requires a title`);
-     if ("description" in form && !form.description.trim()) throw new Error(`form ${form.formId} requires a description`);
-     if (!new Set(["worker", "customer", "both"]).has(form.audience)) throw new Error(`form ${form.formId} has invalid audience`);
-     if (form.titles) validateLocalizedText(form.titles, `form ${form.formId} title`);
-     if (form.descriptions) validateLocalizedText(form.descriptions, `form ${form.formId} description`);
-+    if ("propertySchema" in form && form.propertySchema) {
-+      for (const [name, property] of Object.entries(form.propertySchema.properties)) {
-+        if (property.pattern !== undefined && !isSafePattern(property.pattern)) {
-+          throw new Error(`form ${form.formId} property ${name} has an invalid or unsafe pattern`);
-+        }
-+      }
-+    }
-     if ("fieldSubset" in form && form.fieldSubset) {
-       for (const name of form.fieldSubset) if (!names.has(name)) throw new Error(`form ${form.formId} references unknown field ${name}`);
-     }
-   }
-   const ruleIds = new Set<string>();
-   for (const rule of config.rules ?? []) {
-     if (ruleIds.has(rule.ruleId)) throw new Error(`duplicate rule id ${rule.ruleId}`);
-     ruleIds.add(rule.ruleId);
-     assertRule(rule, fieldDefs, states, config.categoryRoots);
-   }
- }
- 
- export function categoryBelongsToRegistry(config: Pick<RegistryConfig, "categoryRoots">, category: string): boolean {
-   normalizePath(category);
-   return config.categoryRoots.some((root) => isWithin(category, root));
- }
-diff --git a/src/domain/json-schema.ts b/src/domain/json-schema.ts
-index f05d85a6b4f3dc69fc32da4e549251975f2dc763..346b854d4d1b66ce4810688dac1952871ead3143 100644
---- a/src/domain/json-schema.ts
-+++ b/src/domain/json-schema.ts
-@@ -9,88 +9,122 @@
-  * build step. The stored schema shape is forward-compatible with Ajv.
-  */
- 
- export interface PropertySchema {
-   readonly type: "string" | "number" | "integer" | "boolean";
-   readonly minimum?: number;
-   readonly maximum?: number;
-   readonly pattern?: string;
-   /** Message shown when this property's value does not satisfy its constraints. */
-   readonly errorMessage?: string;
- }
- 
- export interface ObjectSchema {
-   readonly type: "object";
-   readonly properties: Readonly<Record<string, PropertySchema>>;
-   readonly required?: readonly string[];
-   /** Reject properties not named in `properties`. Default true. */
-   readonly additionalProperties?: boolean;
- }
- 
- export interface ValidationResult {
-   readonly valid: boolean;
-   readonly errors: readonly string[];
- }
- 
-+const MAX_PATTERN_LENGTH = 256;
-+const MAX_PATTERN_VALUE_LENGTH = 1024;
-+
-+/**
-+ * Conservative, dependency-free policy for regular expressions evaluated on
-+ * request data. It deliberately excludes constructs whose runtime can grow
-+ * super-linearly in JavaScript's backtracking regexp engine.
-+ */
-+export function isSafePattern(pattern: string): boolean {
-+  if (pattern.length === 0 || pattern.length > MAX_PATTERN_LENGTH || /\\[1-9]/.test(pattern)) return false;
-+  let escaped = false;
-+  let inClass = false;
-+  let unboundedQuantifiers = 0;
-+  const groups: Array<{ containsQuantifier: boolean; containsAlternation: boolean }> = [];
-+  for (let i = 0; i < pattern.length; i++) {
-+    const char = pattern[i]!;
-+    if (escaped) { escaped = false; continue; }
-+    if (char === "\\") { escaped = true; continue; }
-+    if (char === "[") { inClass = true; continue; }
-+    if (char === "]" && inClass) { inClass = false; continue; }
-+    if (inClass) continue;
-+    if (char === "(") groups.push({ containsQuantifier: false, containsAlternation: false });
-+    else if (char === "|") { if (groups.length) groups[groups.length - 1]!.containsAlternation = true; }
-+    else if (char === "*" || char === "+") {
-+      unboundedQuantifiers++;
-+      for (const group of groups) group.containsQuantifier = true;
-+    } else if (char === ")") {
-+      const group = groups.pop();
-+      const next = pattern[i + 1];
-+      if (group && (next === "*" || next === "+" || next === "{") && (group.containsQuantifier || group.containsAlternation)) return false;
-+    }
-+  }
-+  if (escaped || inClass || groups.length || unboundedQuantifiers > 1) return false;
-+  try { new RegExp(pattern); return true; } catch { return false; }
-+}
-+
- export function validate(schema: ObjectSchema, value: unknown): ValidationResult {
-   const errors: string[] = [];
-   if (value === null || typeof value !== "object" || Array.isArray(value)) {
-     return { valid: false, errors: ["payload must be an object"] };
-   }
-   const obj = value as Record<string, unknown>;
-   const required = new Set(schema.required ?? []);
- 
-   if (schema.additionalProperties !== true) {
-     for (const key of Object.keys(obj)) {
-       if (!(key in schema.properties)) errors.push(`unexpected property "${key}"`);
-     }
-   }
- 
-   for (const [name, prop] of Object.entries(schema.properties)) {
-     const present = name in obj;
-     const v = obj[name];
-     if (!present || v === undefined || (required.has(name) && (v === null || v === ""))) {
-       if (required.has(name)) errors.push(`missing required property "${name}"`);
-       continue;
-     }
-     if (v === null) {
-       errors.push(`property "${name}" may not be null`);
-       continue;
-     }
-     if (!typeMatches(prop.type, v)) {
-       errors.push(prop.errorMessage || `property "${name}" must be ${prop.type}`);
-       continue;
-     }
-     const constraintError = validateConstraints(prop, v);
-     if (constraintError) errors.push(prop.errorMessage || `property "${name}" ${constraintError}`);
-   }
- 
-   return { valid: errors.length === 0, errors };
- }
- 
- function validateConstraints(prop: PropertySchema, value: unknown): string | undefined {
-   if ((prop.type === "number" || prop.type === "integer") && typeof value === "number") {
-     if (prop.minimum !== undefined && value < prop.minimum) return `must be at least ${prop.minimum}`;
-     if (prop.maximum !== undefined && value > prop.maximum) return `must be at most ${prop.maximum}`;
-   }
-   if (prop.type === "string" && prop.pattern !== undefined && typeof value === "string") {
--    try {
--      if (!new RegExp(prop.pattern).test(value)) return `must match pattern ${prop.pattern}`;
--    } catch {
--      return "has an invalid configured pattern";
--    }
-+    if (!isSafePattern(prop.pattern)) return "has an invalid or unsafe configured pattern";
-+    if (value.length > MAX_PATTERN_VALUE_LENGTH) return `must be at most ${MAX_PATTERN_VALUE_LENGTH} characters when pattern validation is configured`;
-+    if (!new RegExp(prop.pattern).test(value)) return `must match pattern ${prop.pattern}`;
-   }
-   return undefined;
- }
- 
- function typeMatches(type: PropertySchema["type"], v: unknown): boolean {
-   switch (type) {
-     case "string":
-       return typeof v === "string";
-     case "number":
-       return typeof v === "number" && Number.isFinite(v);
-     case "integer":
-       return typeof v === "number" && Number.isInteger(v);
-     case "boolean":
-       return typeof v === "boolean";
-   }
- }
-diff --git a/src/services/admin.ts b/src/services/admin.ts
-index 146957ca454d6ee10b5c567598c64f032ce0dd57..fa8bdb3d731d2b6d3c264f06fd8344762c1f5065 100644
---- a/src/services/admin.ts
-+++ b/src/services/admin.ts
-@@ -65,63 +65,80 @@ export async function addField(platform: Platform, registryId: string, field: Re
-   return mutateRegistryConfig(platform, registryId, (cfg) => {
-     if (cfg.fields.some((f) => f.name === field.name)) throw new Error(`field ${field.name} already exists`);
-     return { ...cfg, fields: [...cfg.fields, field] };
-   }, now);
- }
- 
- export async function addState(platform: Platform, registryId: string, state: StateDef, now: string) {
-   return mutateRegistryConfig(platform, registryId, (cfg) => ({ ...cfg, states: [...cfg.states, state] }), now);
- }
- 
- export async function addTransition(platform: Platform, registryId: string, from: string, to: string, now: string) {
-   return mutateRegistryConfig(platform, registryId, (cfg) => {
-     const known = new Set(cfg.states.map((s) => s.id));
-     if (!known.has(from) || !known.has(to)) throw new Error("transition references unknown state");
-     if (cfg.transitions.some(([f, t]) => f === from && t === to)) return cfg;
-     return { ...cfg, transitions: [...cfg.transitions, [from, to]] };
-   }, now);
- }
- 
- export async function addForm(platform: Platform, registryId: string, form: FormConfig, now: string) {
-   const compatible = { ...form, description: form.description || form.title };
-   return form.kind === "case" ? addCaseForm(platform, registryId, compatible, now) : addOperationForm(platform, registryId, compatible, now);
- }
- 
- export async function addCaseForm(platform: Platform, registryId: string, form: CaseFormConfig, now: string) {
--  return mutateRegistryConfig(platform, registryId, (cfg) => ({
--    ...cfg,
--    caseForms: [...(cfg.caseForms ?? []).filter((f) => f.formId !== form.formId), form],
--    operationForms: (cfg.operationForms ?? []).filter((f) => f.formId !== form.formId),
--  }), now);
-+  return mutateRegistryConfig(platform, registryId, (cfg) => {
-+    const existing = (cfg.caseForms ?? []).find((candidate) => candidate.formId === form.formId);
-+    const merged = preserveFormTranslations(existing, form);
-+    return {
-+      ...cfg,
-+      caseForms: [...(cfg.caseForms ?? []).filter((f) => f.formId !== form.formId), merged],
-+      operationForms: (cfg.operationForms ?? []).filter((f) => f.formId !== form.formId),
-+    };
-+  }, now);
- }
- 
- export async function addOperationForm(platform: Platform, registryId: string, form: OperationFormConfig, now: string) {
--  return mutateRegistryConfig(platform, registryId, (cfg) => ({
--    ...cfg,
--    caseForms: (cfg.caseForms ?? []).filter((f) => f.formId !== form.formId),
--    operationForms: [...(cfg.operationForms ?? []).filter((f) => f.formId !== form.formId), form],
--  }), now);
-+  return mutateRegistryConfig(platform, registryId, (cfg) => {
-+    const existing = (cfg.operationForms ?? []).find((candidate) => candidate.formId === form.formId);
-+    const merged = preserveFormTranslations(existing, form);
-+    return {
-+      ...cfg,
-+      caseForms: (cfg.caseForms ?? []).filter((f) => f.formId !== form.formId),
-+      operationForms: [...(cfg.operationForms ?? []).filter((f) => f.formId !== form.formId), merged],
-+    };
-+  }, now);
-+}
-+
-+function preserveFormTranslations<T extends CaseFormConfig | OperationFormConfig>(existing: T | undefined, replacement: T): T {
-+  if (!existing) return replacement;
-+  return {
-+    ...replacement,
-+    ...(existing.titles ? { title: existing.title, titles: existing.titles } : {}),
-+    ...(existing.descriptions ? { description: existing.description, descriptions: existing.descriptions } : {}),
-+  };
- }
- 
- export async function addRule(platform: Platform, registryId: string, rule: RuleConfig, now: string) {
-   return mutateRegistryConfig(platform, registryId, (cfg) => ({ ...cfg, rules: [...(cfg.rules ?? []).filter((r) => r.ruleId !== rule.ruleId), rule] }), now);
- }
- 
- export async function addCategory(platform: Platform, code: string, name: string, now: string): Promise<void> {
-   await applyPlatformConfig(platform.shared, { categories: [{ code, name }] }, now);
- }
- 
- export async function grantAuthorization(
-   platform: Platform,
-   input: { workerId: string; registryId: string; categoryId: string; canRead?: boolean; canWrite?: boolean; canTransition?: boolean; canApprove?: boolean; optedIn?: boolean; validFrom?: string; validUntil?: string },
- ): Promise<void> {
-   const registry = platform.registry(input.registryId);
-   if (!registry) throw new Error(`unknown registry ${input.registryId}`);
-   if (!categoryBelongsToRegistry(registry.def, input.categoryId)) throw new Error("authorization category is outside registry scope");
-   const worker = await platform.shared.get("SELECT 1 AS ok FROM workers WHERE worker_id = ? AND active = 1", [input.workerId]);
-   if (!worker) throw new Error(`unknown or inactive worker ${input.workerId}`);
-   const category = await platform.shared.get("SELECT 1 AS ok FROM categories WHERE category_id = ? AND active = 1", [input.categoryId]);
-   if (!category) throw new Error(`unknown or inactive category ${input.categoryId}`);
-   const validFrom = input.validFrom === undefined ? undefined : Date.parse(input.validFrom);
-   const validUntil = input.validUntil === undefined ? undefined : Date.parse(input.validUntil);
-   if (validFrom !== undefined && Number.isNaN(validFrom)) throw new Error("invalid validFrom");
-   if (validUntil !== undefined && Number.isNaN(validUntil)) throw new Error("invalid validUntil");
-diff --git a/test/forms.test.ts b/test/forms.test.ts
-index 0988caf6102227f5e8b2e09e73e4dc6f4c7d4dd8..7f19f5d97cec849ccf5fa8dbb61d7515e4f7b8b6 100644
---- a/test/forms.test.ts
-+++ b/test/forms.test.ts
-@@ -1,50 +1,83 @@
- import { test } from "node:test";
- import assert from "node:assert/strict";
- import { buildSamplePlatform, fixedClock } from "../src/bootstrap.ts";
- import { dispatch } from "../src/api/server.ts";
- import { getCaseByDiaryNumber, getCaseHistory } from "../src/core/queries.ts";
- import { validate } from "../src/domain/json-schema.ts";
- 
- const NOW = "2026-08-11T09:00:00.000Z";
- const asCustomer = (id: string) => `Bearer customer:${id}`;
- const asWorker = (id: string) => `Bearer worker:${id}`;
- 
- test("operation property validation treats mandatory as non-empty and supports constraints", () => {
-   const schema = {
-     type: "object" as const,
-     properties: {
-       reference: { type: "string" as const, pattern: "^[A-Z]{2}$", errorMessage: "Use two capital letters" },
-       amount: { type: "number" as const, minimum: 1, maximum: 10 },
-     },
-     required: ["reference"],
-   };
-   assert.deepEqual(validate(schema, { reference: "" }).errors, ['missing required property "reference"']);
-   assert.deepEqual(validate(schema, { reference: "ab", amount: 11 }).errors, ["Use two capital letters", 'property "amount" must be at most 10']);
-   assert.equal(validate(schema, { reference: "AB", amount: 5 }).valid, true);
+diff --git a/public/styles.css b/public/styles.css
+index 44957987ddbed0ca24adadc2722fa92ecf09f687..443acfff887c82d5d2074ca955bedda61c5d0a64 100644
+--- a/public/styles.css
++++ b/public/styles.css
+@@ -94,72 +94,74 @@ h3 { margin: 24px 0 12px; font-size: 18px; line-height: 1.3; }
+ .card.editing > .card { width: 100%; margin: 0; border: 0; border-top: 0; box-shadow: none; }
+ .pillbar { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+ .pillbar button { background: var(--panel); color: var(--brand-blue); border: 1px solid var(--brand-blue); border-radius: 2px; padding: 8px 14px; font: 700 13px var(--sans); cursor: pointer; }
+ .pillbar button:hover { background: #eeeeff; }
+ .pillbar button.active { background: var(--brand-blue); color: #fff; border-color: var(--brand-blue); }
+ table { width: 100%; border-collapse: collapse; font-size: 14px; }
+ th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+ th { color: var(--text); background: var(--panel-2); font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+ tr.click { cursor: pointer; }
+ tr.click:hover { background: #f2f2ff; }
+ .mono { font-family: var(--mono); font-size: 12.5px; }
+ .badge { display: inline-block; padding: 3px 9px; border-radius: 2px; font-size: 12px; font-weight: 700; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); }
+ .badge.open { color: var(--ok); border-color: var(--ok); background: #edf7f1; }
+ .badge.closed { color: var(--muted); }
+ .badge.waiting { color: var(--warn); border-color: #b27c13; background: #fff6df; }
+ .badge.property { padding: 2px 8px; border-radius: 999px; color: #174f54; border-color: var(--brand-aqua); background: #e5f5f6; font-size: 11px; }
+ button.btn { min-height: 42px; background: var(--brand-blue); color: #fff; border: 2px solid var(--brand-blue); border-radius: 2px; padding: 8px 16px; font: 700 14px var(--sans); cursor: pointer; }
+ button.btn:hover { background: #2323aa; border-color: #2323aa; }
+ button.btn.ghost { background: transparent; color: var(--brand-blue); border-color: var(--brand-blue); }
+ button.btn.ghost:hover { background: #eeeeff; }
+ button.btn.sm { min-height: 34px; padding: 5px 10px; font-size: 12.5px; }
+ button.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+ .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+ .field label { color: var(--text); font-size: 13px; font-weight: 700; }
+ .field .req { color: var(--danger); }
++.field .validation-error { color: var(--danger); font-weight: 700; }
++.field [aria-invalid="true"] { border-color: var(--danger); outline-color: var(--danger); }
+ .hist { border-left: 4px solid var(--brand-aqua); padding-left: 16px; margin: 8px 0; }
+ .hist .op { padding: 9px 0; border-bottom: 1px solid var(--line); }
+ .hist .op:last-child { border-bottom: none; }
+ .op-type { font-weight: 700; }
+ .op-meta { color: var(--muted); font-size: 12px; }
+ .operation-properties { display: grid; grid-template-columns: minmax(100px, max-content) 1fr; gap: 3px 14px; margin: 8px 0 0; font-size: 13px; }
+ .operation-properties dt { color: var(--muted); font-weight: 700; }
+ .operation-properties dd { margin: 0; overflow-wrap: anywhere; }
+ .schema-properties { display: grid; gap: 10px; }
+ .schema-property { display: grid; gap: 12px; padding: 12px; background: var(--panel-2); border: 1px solid var(--line); }
+ .schema-primary { display: grid; grid-template-columns: minmax(180px, 2fr) minmax(140px, 1fr) auto; align-items: end; gap: 10px; }
+ .schema-validation { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); align-items: end; gap: 10px; }
+ .schema-actions { display: flex; }
+ .schema-property .field { margin: 0; }
+ .schema-property [hidden] { display: none; }
+ .schema-check { min-height: 42px; font-size: 13px; }
+ .schema-string + .schema-message { grid-column: span 2; }
+ .schema-builder > .btn { align-self: flex-start; }
+ .optional { color: var(--muted); font-weight: 400; }
+ .empty { color: var(--muted); font-style: italic; padding: 12px 0; }
+-.toast { position: fixed; right: 24px; bottom: 24px; background: var(--panel); border: 1px solid var(--line); border-left: 6px solid var(--brand-blue); border-radius: 2px; padding: 14px 18px; max-width: 400px; box-shadow: 0 12px 30px rgba(0,0,0,.18); font-size: 14px; z-index: 50; }
+-.toast.err { left: 50%; right: auto; text-align: center; transform: translateX(-50%); border-left-color: var(--danger); }
++.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); border-left: 6px solid var(--brand-blue); border-radius: 2px; padding: 14px 18px; width: max-content; max-width: min(400px, calc(100vw - 48px)); box-shadow: 0 12px 30px rgba(0,0,0,.18); font-size: 14px; text-align: center; z-index: 50; }
++.toast.err { border-left-color: var(--danger); }
+ .toast.ok { border-left-color: var(--brand-green); }
+ .foot { display: flex; justify-content: center; align-items: center; gap: 16px; color: #fff; background: var(--brand-blue); font-size: 12px; text-align: center; padding: 26px 20px; }
+ .foot-mark { display: grid; grid-template-columns: repeat(2, 10px); gap: 2px; flex: 0 0 auto; }
+ .foot-mark i { width: 10px; height: 10px; background: var(--brand-green); border-radius: 10px 10px 0 0; }
+ .foot-mark i:nth-child(2) { background: var(--brand-coral); border-radius: 50%; }
+ .foot-mark i:nth-child(3) { background: var(--brand-aqua); border-radius: 50%; }
+ .foot-mark i:nth-child(4) { background: #fff; border-radius: 0 0 10px 10px; }
+ .kv { display: grid; grid-template-columns: max-content 1fr; gap: 7px 18px; font-size: 14px; }
+ .kv dt { color: var(--muted); font-weight: 700; }
+ .kv dd { margin: 0; }
+ .hint { background: #edf7f7; border-left: 5px solid var(--brand-aqua); padding: 13px 15px; color: var(--text); font-size: 14px; }
+ .token-raw { font-family: var(--mono); font-size: 12px; word-break: break-all; background: var(--panel-2); padding: 10px; border: 1px solid var(--line); }
+ .inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+ .inline.wrap { align-items: flex-start; gap: 8px 16px; }
+ .action-picker > .btn, .action-picker > select { height: 42px; min-height: 42px; }
+ .subnav { border-top: 1px solid var(--line); padding-top: 16px; margin: 8px 0 20px; }
+ .mgmt-body > .hint { margin-bottom: 20px; }
+ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 12.5px; }
+ @media (max-width: 860px) {
+   .topbar { align-items: flex-start; padding: 18px 20px; }
+   .service-name { display: none; }
+   .context { width: 100%; justify-content: stretch; }
+   .context label { flex: 1 1 220px; }
+   .tabs { padding-inline: 12px; }
+   .tabs button { flex: 1 1 auto; padding-inline: 10px; }
+diff --git a/test/i18n.test.ts b/test/i18n.test.ts
+index dcd97287fa8bea92b045800c72a298a57137420b..42a33ce3c8c42bef0c6e1ffc2e522dca30a1ce4c 100644
+--- a/test/i18n.test.ts
++++ b/test/i18n.test.ts
+@@ -63,36 +63,40 @@ test("cancelling one self-contained editor only restores its own list", () => {
  });
  
-+test("operation property validation rejects unsafe regular expressions before evaluation", () => {
-+  const schema = {
-+    type: "object" as const,
-+    properties: { reference: { type: "string" as const, pattern: "^(a+)+$" } },
-+  };
-+  assert.deepEqual(validate(schema, { reference: `${"a".repeat(30)}!` }).errors, [
-+    'property "reference" has an invalid or unsafe configured pattern',
-+  ]);
-+});
-+
-+test("editing a localized form preserves its canonical and translated text", async () => {
-+  const { platform: p } = await buildSamplePlatform(fixedClock(NOW));
-+  const before = (await dispatch(p, {
-+    method: "GET", url: "/api/registries/permit/meta?lang=fi", authorization: asWorker("w-admin"), body: undefined,
-+  })).body as { caseForms: Array<{ formId: string; title: string; description: string }> };
-+  const localized = before.caseForms.find((form) => form.formId === "update-site-address")!;
-+
-+  const edited = await dispatch(p, {
-+    method: "POST", url: "/api/admin/registries/permit/case-forms", authorization: asWorker("w-admin"),
-+    body: { ...localized, audience: "both", requiresApproval: false, fieldSubset: ["site_address"] },
-+  });
-+  assert.equal(edited.status, 201);
-+
-+  const artifact = await (await import("../src/services/config-promote.ts")).exportRegistryConfig(p.shared, "permit");
-+  const form = artifact?.caseForms?.find((candidate) => candidate.formId === "update-site-address");
-+  assert.equal(form?.title, "Update site address");
-+  assert.equal(form?.description, "Enter the new address for the permit site.");
-+  assert.equal(form?.titles?.values.fi, localized.title);
-+  assert.equal(form?.descriptions?.values.fi, localized.description);
-+  assert.equal(form?.audience, "both");
-+  assert.equal(form?.requiresApproval, false);
-+});
-+
- test("forms have persistent common and type-specific models", async () => {
-   const { platform } = await buildSamplePlatform(fixedClock(NOW));
-   const base = await platform.shared.get("SELECT title, description FROM form_definitions WHERE form_id = ?", ["update-site-address"]);
-   assert.equal(base?.title, "Update site address");
-   assert.equal(base?.description, "Enter the new address for the permit site.");
-   assert.equal(Number((await platform.shared.get("SELECT requires_approval FROM case_form_definitions WHERE form_id = ?", ["update-site-address"]))?.requires_approval), 1);
-   assert.equal(Number((await platform.shared.get("SELECT allow_attachments FROM operation_form_definitions WHERE form_id = ?", ["submit-document"]))?.allow_attachments), 1);
- 
-   const response = await dispatch(platform, { method: "GET", url: "/api/registries/permit/meta", authorization: asWorker("w-admin"), body: undefined });
-   const metadata = response.body as { caseForms: Array<{ description: string }>; operationForms: Array<{ operationType: string }> };
-   assert.equal(metadata.caseForms[0]?.description, "Anna lupakohteen uusi osoite.");
-   assert.equal(metadata.operationForms[0]?.operationType, "document");
+ test("portal form chooser consumes split forms and includes the both audience", () => {
+   const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+   assert.match(app, /\.\.\.\(m\.operationForms \|\| \[\]\)\.map\(\(form\) => \(\{ \.\.\.form, kind: "operation" \}\)\)/);
+   assert.match(app, /form\.audience === "worker" \|\| form\.audience === "both"/);
+   assert.match(app, /form\.audience === "customer" \|\| form\.audience === "both"/);
  });
  
- test("a form with both audience is visible to customers and workers", async () => {
-   const { platform } = await buildSamplePlatform(fixedClock(NOW));
-   const created = await dispatch(platform, {
-     method: "POST", url: "/api/admin/registries/permit/operation-forms", authorization: asWorker("w-admin"),
-     body: { formId: "shared-note", title: "Shared note", description: "Add a note.", audience: "both", operationType: "note" },
-   });
-   assert.equal(created.status, 201);
-   assert.equal((await platform.shared.get("SELECT audience FROM form_definitions WHERE form_id = ?", ["shared-note"]))?.audience, "both");
+ test("operation schemas have a structured management editor and structured detail values", () => {
+   const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+   assert.match(app, /function schemaPropertyRow\(/);
+   assert.match(app, /"data-schema-required": true/);
+   assert.doesNotMatch(app, /data-schema-nullable/);
+   assert.match(app, /"data-schema-minimum": true/);
+   assert.match(app, /"data-schema-pattern": true/);
+   assert.match(app, /class: "schema-primary"/);
+   assert.match(app, /class: "schema-validation"/);
+   assert.match(app, /class: "schema-actions"/);
+   assert.match(app, /row\.querySelector\("\.schema-message"\)\.hidden = !supportsNumberValidation && !supportsStringValidation/);
+   assert.match(app, /supportsNumberValidation \? row\.querySelector\("\[data-schema-minimum\]"\)\.value : ""/);
+   assert.match(app, /body\.propertySchema = \{ type: "object", properties, required, additionalProperties: false \}/);
+   assert.match(app, /class: "operation-properties"/);
+ });
  
-   for (const authorization of [asCustomer("c-1"), asWorker("w-anna")]) {
-     const response = await dispatch(platform, { method: "GET", url: "/api/registries/permit/meta", authorization, body: undefined });
+-test("dynamic schema validation fields and error toasts are visibly positioned", () => {
++test("dynamic schema validation and all toasts are visibly positioned", () => {
++  const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+   const styles = readFileSync(new URL("../public/styles.css", import.meta.url), "utf8");
+   assert.match(styles, /\.schema-property \[hidden\] \{ display: none; \}/);
+-  assert.match(styles, /\.toast\.err \{ left: 50%; right: auto; text-align: center; transform: translateX\(-50%\);/);
++  assert.match(app, /input\.addEventListener\("blur", validate\)/);
++  assert.match(app, /status\.className = message \? "validation-error"/);
++  assert.match(styles, /\.toast \{ position: fixed; left: 50%; bottom: 24px; transform: translateX\(-50%\);/);
++  assert.match(styles, /\.field \[aria-invalid="true"\]/);
+ });
+ 
+ test("locale storage failures are isolated from application startup", () => {
+   const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+   assert.match(app, /function readStoredLocale\(\) \{\s*try \{ return localStorage\.getItem\("locale"\); \}\s*catch \{ return null; \}/);
+   assert.match(app, /stored: readStoredLocale\(\)/);
+ });

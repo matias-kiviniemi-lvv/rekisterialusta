@@ -815,7 +815,12 @@ function operationFormBlock(f, c, onCancel) {
     const attrs = { id: "op_" + name, required: req, min: spec.minimum, max: spec.maximum, title: spec.errorMessage };
     const input = spec.type === "boolean" ? h("select", attrs, h("option", { value: "" }, "—"), h("option", { value: "false" }, "false"), h("option", { value: "true" }, "true"))
       : h("input", { ...attrs, type: spec.type === "integer" || spec.type === "number" ? "number" : "text", step: spec.type === "number" ? "any" : spec.type === "integer" ? "1" : null });
-    box.append(h("div", { class: "field" }, h("label", null, name, req ? h("span", { class: "req" }, ` · ${t("form.required")}`) : h("span", { class: "optional" }, ` · ${t("form.optional")}`)), input));
+    const status = req
+      ? h("span", { class: "req", "aria-live": "polite" }, ` · ${t("form.required")}`)
+      : h("span", { class: "optional", "aria-live": "polite" }, ` · ${t("form.optional")}`);
+    const validate = () => validateOperationProperty(name, spec, input, status, req);
+    input.addEventListener("blur", validate);
+    box.append(h("div", { class: "field" }, h("label", { for: attrs.id }, name, status), input));
   }
   if (f.allowAttachments) box.append(h("div", { class: "field" },
     h("label", null, "Attachment filename"), h("input", { id: "op_att_name", placeholder: "deed.txt" }),
@@ -826,17 +831,12 @@ function operationFormBlock(f, c, onCancel) {
       const el = $("#op_" + name); if (!el || el.value === "") continue;
       properties[name] = spec.type === "boolean" ? el.value === "true" : (spec.type === "integer" || spec.type === "number") ? Number(el.value) : el.value;
     }
-    const missing = props.find(([name]) => (schema.required || []).includes(name) && !$("#op_" + name)?.value);
-    if (missing) { toast(t("operation.requiredProperty", { name: missing[0] }), "err"); $("#op_" + missing[0]).focus(); return; }
     const invalid = props.find(([name, spec]) => {
       const input = $("#op_" + name);
-      if (!input?.value || !input.checkValidity()) return !!input?.value && !input.checkValidity();
-      if (spec.type === "string" && spec.pattern) {
-        try { return !new RegExp(spec.pattern).test(input.value); } catch { return true; }
-      }
-      return false;
+      const status = input?.previousElementSibling?.querySelector("span");
+      return input && status && !validateOperationProperty(name, spec, input, status, (schema.required || []).includes(name));
     });
-    if (invalid) { toast(invalid[1].errorMessage || t("operation.invalidProperty", { name: invalid[0] }), "err"); $("#op_" + invalid[0]).focus(); return; }
+    if (invalid) { $("#op_" + invalid[0]).focus(); return; }
     const body = { diaryNumber: c.diaryNumber, properties };
     if (f.allowAttachments && $("#op_att_name") && $("#op_att_name").value) {
       body.attachments = [{ filename: $("#op_att_name").value, contentType: "text/plain", base64: btoa($("#op_att_body").value || "") }];
@@ -847,6 +847,21 @@ function operationFormBlock(f, c, onCancel) {
   box.append(h("div", { class: "inline" }, submit,
     onCancel && h("button", { class: "btn sm ghost", onclick: onCancel }, t("common.cancel"))));
   return box;
+}
+
+function validateOperationProperty(name, spec, input, status, required) {
+  let message = "";
+  if (required && !input.value) message = t("operation.requiredProperty", { name });
+  else if (input.value && !input.checkValidity()) message = spec.errorMessage || t("operation.invalidProperty", { name });
+  else if (input.value && spec.type === "string" && spec.pattern) {
+    try { if (!new RegExp(spec.pattern).test(input.value)) message = spec.errorMessage || t("operation.invalidProperty", { name }); }
+    catch { message = spec.errorMessage || t("operation.invalidProperty", { name }); }
+  }
+
+  status.className = message ? "validation-error" : required ? "req" : "optional";
+  status.textContent = message ? ` · ${message}` : ` · ${t(required ? "form.required" : "form.optional")}`;
+  input.setAttribute("aria-invalid", String(Boolean(message)));
+  return !message;
 }
 
 function categorySelect() {

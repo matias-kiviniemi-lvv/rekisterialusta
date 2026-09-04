@@ -85,10 +85,14 @@ test("operation schemas have a structured management editor and structured detai
   assert.match(app, /class: "operation-properties"/);
 });
 
-test("dynamic schema validation fields and error toasts are visibly positioned", () => {
+test("dynamic schema validation and all toasts are visibly positioned", () => {
+  const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
   const styles = readFileSync(new URL("../public/styles.css", import.meta.url), "utf8");
   assert.match(styles, /\.schema-property \[hidden\] \{ display: none; \}/);
-  assert.match(styles, /\.toast\.err \{ left: 50%; right: auto; text-align: center; transform: translateX\(-50%\);/);
+  assert.match(app, /input\.addEventListener\("blur", validate\)/);
+  assert.match(app, /status\.className = message \? "validation-error"/);
+  assert.match(styles, /\.toast \{ position: fixed; left: 50%; bottom: 24px; transform: translateX\(-50%\);/);
+  assert.match(styles, /\.field \[aria-invalid="true"\]/);
 });
 
 test("locale storage failures are isolated from application startup", () => {
