@@ -3,10 +3,25 @@ import assert from "node:assert/strict";
 import { buildSamplePlatform, fixedClock } from "../src/bootstrap.ts";
 import { dispatch } from "../src/api/server.ts";
 import { getCaseByDiaryNumber, getCaseHistory } from "../src/core/queries.ts";
+import { validate } from "../src/domain/json-schema.ts";
 
 const NOW = "2026-08-11T09:00:00.000Z";
 const asCustomer = (id: string) => `Bearer customer:${id}`;
 const asWorker = (id: string) => `Bearer worker:${id}`;
+
+test("operation property validation treats mandatory as non-empty and supports constraints", () => {
+  const schema = {
+    type: "object" as const,
+    properties: {
+      reference: { type: "string" as const, pattern: "^[A-Z]{2}$", errorMessage: "Use two capital letters" },
+      amount: { type: "number" as const, minimum: 1, maximum: 10 },
+    },
+    required: ["reference"],
+  };
+  assert.deepEqual(validate(schema, { reference: "" }).errors, ['missing required property "reference"']);
+  assert.deepEqual(validate(schema, { reference: "ab", amount: 11 }).errors, ["Use two capital letters", 'property "amount" must be at most 10']);
+  assert.equal(validate(schema, { reference: "AB", amount: 5 }).valid, true);
+});
 
 test("forms have persistent common and type-specific models", async () => {
   const { platform } = await buildSamplePlatform(fixedClock(NOW));
@@ -145,6 +160,12 @@ test("operation form validates payload against its JSON schema and stores attach
     body: { diaryNumber: diary, properties: { documentTitle: "Deed", pages: 2 }, attachments: [{ filename: "deed.txt", contentType: "text/plain", base64: Buffer.from("hello").toString("base64") }] },
   });
   assert.equal(ok.status, 201);
+
+  const detail = await dispatch(p, {
+    method: "GET", url: `/api/registries/permit/cases/${encodeURIComponent(diary)}`, authorization: asCustomer("c-1"), body: undefined,
+  });
+  const history = (detail.body as { history: Array<{ type: string; properties: unknown }> }).history;
+  assert.deepEqual(history.find((operation) => operation.type === "document")?.properties, { documentTitle: "Deed", pages: 2 });
 
   const cse = (await getCaseByDiaryNumber(db, diary))!;
   const att = await db.get("SELECT filename, size, blob_key FROM attachments WHERE case_key = ?", [cse.caseKey]);

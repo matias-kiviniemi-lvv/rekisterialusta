@@ -69,6 +69,28 @@ test("portal form chooser consumes split forms and includes the both audience", 
   assert.match(app, /form\.audience === "customer" \|\| form\.audience === "both"/);
 });
 
+test("operation schemas have a structured management editor and structured detail values", () => {
+  const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+  assert.match(app, /function schemaPropertyRow\(/);
+  assert.match(app, /"data-schema-required": true/);
+  assert.doesNotMatch(app, /data-schema-nullable/);
+  assert.match(app, /"data-schema-minimum": true/);
+  assert.match(app, /"data-schema-pattern": true/);
+  assert.match(app, /class: "schema-primary"/);
+  assert.match(app, /class: "schema-validation"/);
+  assert.match(app, /class: "schema-actions"/);
+  assert.match(app, /row\.querySelector\("\.schema-message"\)\.hidden = !supportsNumberValidation && !supportsStringValidation/);
+  assert.match(app, /supportsNumberValidation \? row\.querySelector\("\[data-schema-minimum\]"\)\.value : ""/);
+  assert.match(app, /body\.propertySchema = \{ type: "object", properties, required, additionalProperties: false \}/);
+  assert.match(app, /class: "operation-properties"/);
+});
+
+test("dynamic schema validation fields and error toasts are visibly positioned", () => {
+  const styles = readFileSync(new URL("../public/styles.css", import.meta.url), "utf8");
+  assert.match(styles, /\.schema-property \[hidden\] \{ display: none; \}/);
+  assert.match(styles, /\.toast\.err \{ left: 50%; right: auto; text-align: center; transform: translateX\(-50%\);/);
+});
+
 test("locale storage failures are isolated from application startup", () => {
   const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
   assert.match(app, /function readStoredLocale\(\) \{\s*try \{ return localStorage\.getItem\("locale"\); \}\s*catch \{ return null; \}/);

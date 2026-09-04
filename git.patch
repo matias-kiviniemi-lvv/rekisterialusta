@@ -1,14 +1,8 @@
 diff --git a/public/app.js b/public/app.js
-index c917fe8e6b55c76538e01a6fb3e005884a7842c3..9f0c0fcbaf7f25fc2eb303d3125a22b028182e92 100644
+index aa2276a16b18bb7e7434276e6a9b44da67b7a441..4abba7a88b0c13a4ec7f24602f326d89b82e1db2 100644
 --- a/public/app.js
 +++ b/public/app.js
-@@ -388,58 +388,64 @@ const MGMT_RENDERERS = {
-       { header: "", get: () => "→" },
-       { header: t("management.to"), get: (t) => nameOf(t.to) },
-     ], m.transitions, t("management.noTransitions"), t("management.addTransition"), (cancel) => manageCard(t("management.addTransition"), [
-       ["from", stateSelect("at_from")],
-       ["to", stateSelect("at_to")],
-     ], async () => {
+@@ -394,58 +394,58 @@ const MGMT_RENDERERS = {
        const r = await api("POST", `/api/admin/registries/${state.registry}/transitions`, { from: $("#at_from").value, to: $("#at_to").value });
        if (ok(r, `Transition added → config v${r.data.version}`)) { await refreshMeta(); reManage(); }
      }, "Add transition", cancel));
@@ -28,24 +22,22 @@ index c917fe8e6b55c76538e01a6fb3e005884a7842c3..9f0c0fcbaf7f25fc2eb303d3125a22b0
    },
  
    async forms(body, m) {
--    selfContainedList(body, t("management.currentForms"), [
-+    const audienceLabel = (audience) => audience === "both" ? t("management.audienceBoth") : audience === "worker" ? t("management.audienceWorker") : t("management.audienceCustomer");
-+    selfContainedList(body, t("management.caseForms"), [
+     const audienceLabel = (audience) => audience === "both" ? t("management.audienceBoth") : audience === "worker" ? t("management.audienceWorker") : t("management.audienceCustomer");
+     selfContainedList(body, t("management.caseForms"), [
        { header: t("management.formId"), cls: "mono", get: (f) => f.formId },
--      { header: t("management.kind"), get: (f) => f.kind },
--      { header: t("management.audience"), get: (f) => f.audience },
-+      { header: t("management.audience"), get: (f) => audienceLabel(f.audience) },
+       { header: t("management.audience"), get: (f) => audienceLabel(f.audience) },
        { header: t("management.titleColumn"), get: (f) => f.title },
        { header: t("management.approval"), get: (f) => f.requiresApproval ? t("management.required") : "—" },
-+    ], m.caseForms || [], t("management.noCaseForms"), t("management.createCaseForm"), (cancel) => formCreateCard(m, "case", cancel));
-+    selfContainedList(body, t("management.operationForms"), [
-+      { header: t("management.formId"), cls: "mono", get: (f) => f.formId },
-+      { header: t("management.audience"), get: (f) => audienceLabel(f.audience) },
-+      { header: t("management.titleColumn"), get: (f) => f.title },
-+      { header: t("management.operationType"), get: (f) => f.operationType || "—" },
+-    ], m.caseForms || [], t("management.noCaseForms"), t("management.createCaseForm"), (cancel) => formCreateCard(m, "case", cancel));
++    ], m.caseForms || [], t("management.noCaseForms"), t("management.createCaseForm"), (cancel) => formCreateCard(m, "case", cancel), (form, cancel) => formCreateCard(m, "case", cancel, form));
+     selfContainedList(body, t("management.operationForms"), [
+       { header: t("management.formId"), cls: "mono", get: (f) => f.formId },
+       { header: t("management.audience"), get: (f) => audienceLabel(f.audience) },
+       { header: t("management.titleColumn"), get: (f) => f.title },
+       { header: t("management.operationType"), get: (f) => f.operationType || "—" },
        { header: t("management.attachments"), get: (f) => f.allowAttachments ? t("common.yes") : "—" },
--    ], m.forms, t("management.noForms"), t("management.createForm"), (cancel) => formCreateCard(m, cancel));
-+    ], m.operationForms || [], t("management.noOperationForms"), t("management.createOperationForm"), (cancel) => formCreateCard(m, "operation", cancel));
+-    ], m.operationForms || [], t("management.noOperationForms"), t("management.createOperationForm"), (cancel) => formCreateCard(m, "operation", cancel));
++    ], m.operationForms || [], t("management.noOperationForms"), t("management.createOperationForm"), (cancel) => formCreateCard(m, "operation", cancel), (form, cancel) => formCreateCard(m, "operation", cancel, form));
    },
  
    async rules(body) {
@@ -71,7 +63,7 @@ index c917fe8e6b55c76538e01a6fb3e005884a7842c3..9f0c0fcbaf7f25fc2eb303d3125a22b0
        h("div", { class: "inline" },
          h("label", { class: "inline" }, "Methods ", ...["GET", "POST", "PUT", "DELETE"].map((mm) => h("label", { class: "inline" }, h("input", { type: "checkbox", id: "tk_m_" + mm, checked: mm === "GET" }), mm)))),
        h("div", { class: "field" }, h("label", null, "Resources (comma)"), h("input", { id: "tk_res", value: "cases" })),
-@@ -463,137 +469,143 @@ const MGMT_RENDERERS = {
+@@ -469,136 +469,193 @@ const MGMT_RENDERERS = {
  
    async config(body, m) {
      const cv = await api("GET", `/api/admin/registries/${state.registry}/config-versions`);
@@ -97,68 +89,120 @@ index c917fe8e6b55c76538e01a6fb3e005884a7842c3..9f0c0fcbaf7f25fc2eb303d3125a22b0
  
  // ---- Management create forms (Forms + Rules) -------------------------------
  
--function formCreateCard(m, onCancel) {
-+function formCreateCard(m, kind, onCancel) {
+-function formCreateCard(m, kind, onCancel) {
++function schemaPropertyRow(name = "", spec = {}, required = false) {
++  const row = h("div", { class: "schema-property" },
++    h("div", { class: "schema-primary" },
++      h("div", { class: "field" }, h("label", null, t("management.propertyName")), h("input", { "data-schema-name": true, value: name, placeholder: "reason" })),
++      h("div", { class: "field" }, h("label", null, t("management.type")), h("select", { "data-schema-type": true },
++        ...["string", "number", "integer", "boolean"].map((type) => h("option", { value: type, selected: (spec.type || "string") === type }, type)))),
++      h("label", { class: "inline schema-check" }, h("input", { type: "checkbox", "data-schema-required": true, checked: required }), t("management.propertyRequired"))),
++    h("div", { class: "schema-validation" },
++      h("div", { class: "field schema-number" }, h("label", null, t("management.minimum")), h("input", { type: "number", step: "any", "data-schema-minimum": true, value: spec.minimum ?? "" })),
++      h("div", { class: "field schema-number" }, h("label", null, t("management.maximum")), h("input", { type: "number", step: "any", "data-schema-maximum": true, value: spec.maximum ?? "" })),
++      h("div", { class: "field schema-string" }, h("label", null, t("management.pattern")), h("input", { "data-schema-pattern": true, value: spec.pattern || "", placeholder: "^[A-Z]+$" })),
++      h("div", { class: "field schema-message" }, h("label", null, t("management.validationMessage")), h("input", { "data-schema-message": true, value: spec.errorMessage || "" }))),
++    h("div", { class: "schema-actions" },
++      h("button", { class: "btn sm ghost", type: "button", onclick: () => row.remove() }, t("management.removeProperty"))));
++  const updateConstraints = () => {
++    const type = row.querySelector("[data-schema-type]").value;
++    const supportsNumberValidation = type === "number" || type === "integer";
++    const supportsStringValidation = type === "string";
++    row.querySelectorAll(".schema-number").forEach((el) => (el.hidden = !supportsNumberValidation));
++    row.querySelector(".schema-string").hidden = !supportsStringValidation;
++    row.querySelector(".schema-message").hidden = !supportsNumberValidation && !supportsStringValidation;
++  };
++  row.querySelector("[data-schema-type]").addEventListener("change", updateConstraints);
++  updateConstraints();
++  return row;
++}
++
++function schemaBuilder(schema) {
++  const properties = Object.entries(schema?.properties || {});
++  const required = new Set(schema?.required || []);
++  const rows = h("div", { class: "schema-properties" }, ...properties.map(([name, spec]) => schemaPropertyRow(name, spec, required.has(name))));
++  return h("div", { class: "field schema-builder" },
++    h("label", null, t("management.properties")), rows,
++    h("button", { class: "btn sm ghost", type: "button", onclick: () => rows.append(schemaPropertyRow()) }, t("management.addProperty")));
++}
++
++function formCreateCard(m, kind, onCancel, existing = null) {
    const fieldChecks = m.fields.map((f) => h("label", { class: "inline" }, h("input", { type: "checkbox", "data-fs": f.name }), f.name));
++  for (const input of fieldChecks) input.querySelector("input").checked = existing?.fieldSubset?.includes(input.querySelector("input").dataset.fs) || false;
++  const audience = existing?.audience || "customer";
    return h("div", { class: "card" },
--    h("h3", null, "Create form"),
--    h("div", { class: "field" }, h("label", null, "Form ID"), h("input", { id: "fm_id", placeholder: "e.g. permit_supplement" })),
--    h("div", { class: "field" }, h("label", null, "Title"), h("input", { id: "fm_title", placeholder: "Supplement request" })),
--    h("div", { class: "row" },
--      h("div", { class: "col field" }, h("label", null, "Kind"), h("select", { id: "fm_kind" }, h("option", { value: "case" }, "case"), h("option", { value: "operation" }, "operation"))),
--      h("div", { class: "col field" }, h("label", null, "Audience"), h("select", { id: "fm_aud" }, h("option", { value: "customer" }, "customer"), h("option", { value: "worker" }, "worker")))),
--    h("div", { class: "inline", style: "margin:8px 0" },
--      h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_appr" }), "requires approval"),
--      h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_att" }), "allow attachments")),
--    h("div", { class: "field" }, h("label", null, "Operation type — operation kind only, optional"), h("input", { id: "fm_optype", placeholder: "e.g. supplement" })),
--    h("div", { class: "field" }, h("label", null, "Field subset — case kind; leave all unchecked to allow all fields"), h("div", { class: "inline wrap" }, ...(fieldChecks.length ? fieldChecks : [h("span", { class: "op-meta" }, "no fields defined")]))),
--    h("div", { class: "field" }, h("label", null, "Property schema JSON — operation kind, optional"), h("textarea", { id: "fm_schema", rows: "5", placeholder: '{ "properties": { "reason": { "type": "string" } }, "required": ["reason"] }' })),
-+    h("h3", null, kind === "case" ? t("management.createCaseForm") : t("management.createOperationForm")),
-+    h("div", { class: "field" }, h("label", null, t("management.formId")), h("input", { id: "fm_id", placeholder: t("management.formIdPlaceholder") })),
-+    h("div", { class: "field" }, h("label", null, t("management.titleColumn")), h("input", { id: "fm_title", placeholder: t("management.formTitlePlaceholder") })),
-+    h("div", { class: "field" }, h("label", null, t("management.formDescription")), h("textarea", { id: "fm_description", rows: "3", placeholder: t("management.formDescriptionPlaceholder") })),
-+    h("div", { class: "field" }, h("label", null, t("management.audience")), h("select", { id: "fm_aud" }, h("option", { value: "customer" }, t("management.audienceCustomer")), h("option", { value: "worker" }, t("management.audienceWorker")), h("option", { value: "both" }, t("management.audienceBoth")))),
-+    ...(kind === "case" ? [
-+      h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_appr" }), t("management.requiresApproval")),
-+      h("div", { class: "field" }, h("label", null, t("management.fieldSubset")), h("div", { class: "inline wrap" }, ...(fieldChecks.length ? fieldChecks : [h("span", { class: "op-meta" }, t("management.noFieldsDefined"))]))),
-+    ] : [
-+      h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_att" }), t("management.allowAttachments")),
-+      h("div", { class: "field" }, h("label", null, t("management.operationType")), h("input", { id: "fm_optype", placeholder: t("management.operationTypePlaceholder") })),
-+      h("div", { class: "field" }, h("label", null, t("management.propertySchema")), h("textarea", { id: "fm_schema", rows: "5", placeholder: '{ "type": "object", "properties": { "reason": { "type": "string" } } }' })),
-+    ]),
+-    h("h3", null, kind === "case" ? t("management.createCaseForm") : t("management.createOperationForm")),
+-    h("div", { class: "field" }, h("label", null, t("management.formId")), h("input", { id: "fm_id", placeholder: t("management.formIdPlaceholder") })),
+-    h("div", { class: "field" }, h("label", null, t("management.titleColumn")), h("input", { id: "fm_title", placeholder: t("management.formTitlePlaceholder") })),
+-    h("div", { class: "field" }, h("label", null, t("management.formDescription")), h("textarea", { id: "fm_description", rows: "3", placeholder: t("management.formDescriptionPlaceholder") })),
+-    h("div", { class: "field" }, h("label", null, t("management.audience")), h("select", { id: "fm_aud" }, h("option", { value: "customer" }, t("management.audienceCustomer")), h("option", { value: "worker" }, t("management.audienceWorker")), h("option", { value: "both" }, t("management.audienceBoth")))),
++    h("h3", null, existing ? t("management.editForm") : kind === "case" ? t("management.createCaseForm") : t("management.createOperationForm")),
++    h("div", { class: "field" }, h("label", null, t("management.formId")), h("input", { id: "fm_id", value: existing?.formId || "", disabled: !!existing, placeholder: t("management.formIdPlaceholder") })),
++    h("div", { class: "field" }, h("label", null, t("management.titleColumn")), h("input", { id: "fm_title", value: existing?.title || "", placeholder: t("management.formTitlePlaceholder") })),
++    h("div", { class: "field" }, h("label", null, t("management.formDescription")), h("textarea", { id: "fm_description", rows: "3", placeholder: t("management.formDescriptionPlaceholder") }, existing?.description || "")),
++    h("div", { class: "field" }, h("label", null, t("management.audience")), h("select", { id: "fm_aud" }, h("option", { value: "customer", selected: audience === "customer" }, t("management.audienceCustomer")), h("option", { value: "worker", selected: audience === "worker" }, t("management.audienceWorker")), h("option", { value: "both", selected: audience === "both" }, t("management.audienceBoth")))),
+     ...(kind === "case" ? [
+-      h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_appr" }), t("management.requiresApproval")),
++      h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_appr", checked: existing?.requiresApproval === true }), t("management.requiresApproval")),
+       h("div", { class: "field" }, h("label", null, t("management.fieldSubset")), h("div", { class: "inline wrap" }, ...(fieldChecks.length ? fieldChecks : [h("span", { class: "op-meta" }, t("management.noFieldsDefined"))]))),
+     ] : [
+-      h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_att" }), t("management.allowAttachments")),
+-      h("div", { class: "field" }, h("label", null, t("management.operationType")), h("input", { id: "fm_optype", placeholder: t("management.operationTypePlaceholder") })),
+-      h("div", { class: "field" }, h("label", null, t("management.propertySchema")), h("textarea", { id: "fm_schema", rows: "5", placeholder: '{ "type": "object", "properties": { "reason": { "type": "string" } } }' })),
++      h("label", { class: "inline" }, h("input", { type: "checkbox", id: "fm_att", checked: existing?.allowAttachments === true }), t("management.allowAttachments")),
++      h("div", { class: "field" }, h("label", null, t("management.operationType")), h("input", { id: "fm_optype", value: existing?.operationType || "", placeholder: t("management.operationTypePlaceholder") })),
++      schemaBuilder(existing?.propertySchema),
+     ]),
      h("div", { class: "inline" },
--      h("button", { class: "btn", onclick: submitForm }, "Create form"),
-+      h("button", { class: "btn", onclick: () => submitForm(kind) }, t("management.createForm")),
+-      h("button", { class: "btn", onclick: (event) => submitForm(kind, event.currentTarget.closest(".card")) }, t("management.createForm")),
++      h("button", { class: "btn", onclick: (event) => submitForm(kind, event.currentTarget.closest(".card"), !!existing) }, existing ? t("common.save") : t("management.createForm")),
        h("button", { class: "btn ghost", onclick: onCancel }, t("common.cancel"))));
  }
  
--async function submitForm() {
--  const kind = $("#fm_kind").value;
-+async function submitForm(kind) {
-   const formId = $("#fm_id").value.trim();
-   const title = $("#fm_title").value.trim();
--  if (!formId || !title) { toast("Form ID and Title are required", "err"); return; }
--  const body = { formId, title, kind, audience: $("#fm_aud").value, requiresApproval: $("#fm_appr").checked, allowAttachments: $("#fm_att").checked };
--  const optype = $("#fm_optype").value.trim();
-+  const description = $("#fm_description").value.trim();
-+  if (!formId || !title || !description) { toast(t("management.formRequired"), "err"); return; }
-+  const body = { formId, title, description, audience: $("#fm_aud").value };
-+  if (kind === "case") body.requiresApproval = $("#fm_appr").checked;
-+  else body.allowAttachments = $("#fm_att").checked;
-+  const optype = kind === "operation" ? $("#fm_optype").value.trim() : "";
+-async function submitForm(kind, editor) {
++async function submitForm(kind, editor, editing = false) {
+   const field = (selector) => editor.querySelector(selector);
+   const formId = field("#fm_id").value.trim();
+   const title = field("#fm_title").value.trim();
+   const description = field("#fm_description").value.trim();
+   if (!formId || !title || !description) { toast(t("management.formRequired"), "err"); return; }
+   const body = { formId, title, description, audience: field("#fm_aud").value };
+   if (kind === "case") body.requiresApproval = field("#fm_appr").checked;
+   else body.allowAttachments = field("#fm_att").checked;
+   const optype = kind === "operation" ? field("#fm_optype").value.trim() : "";
    if (optype) body.operationType = optype;
-   const subset = [...document.querySelectorAll("[data-fs]")].filter((el) => el.checked).map((el) => el.getAttribute("data-fs"));
+   const subset = [...editor.querySelectorAll("[data-fs]")].filter((el) => el.checked).map((el) => el.getAttribute("data-fs"));
    if (kind === "case" && subset.length) body.fieldSubset = subset;
--  const schemaRaw = $("#fm_schema").value.trim();
-+  const schemaRaw = kind === "operation" ? $("#fm_schema").value.trim() : "";
-   if (schemaRaw) {
--    let parsed; try { parsed = JSON.parse(schemaRaw); } catch { toast("Property schema is not valid JSON", "err"); return; }
-+    let parsed; try { parsed = JSON.parse(schemaRaw); } catch { toast(t("management.invalidPropertySchema"), "err"); return; }
-     body.propertySchema = parsed;
+-  const schemaRaw = kind === "operation" ? field("#fm_schema").value.trim() : "";
+-  if (schemaRaw) {
+-    let parsed; try { parsed = JSON.parse(schemaRaw); } catch { toast(t("management.invalidPropertySchema"), "err"); return; }
+-    body.propertySchema = parsed;
++  if (kind === "operation") {
++    const properties = {}; const required = [];
++    for (const row of editor.querySelectorAll(".schema-property")) {
++      const name = row.querySelector("[data-schema-name]").value.trim();
++      if (!name) { toast(t("management.propertyNameRequired"), "err"); return; }
++      if (properties[name]) { toast(t("management.duplicateProperty", { name }), "err"); return; }
++      const spec = { type: row.querySelector("[data-schema-type]").value };
++      const supportsNumberValidation = spec.type === "number" || spec.type === "integer";
++      const supportsStringValidation = spec.type === "string";
++      const minimum = supportsNumberValidation ? row.querySelector("[data-schema-minimum]").value : "";
++      const maximum = supportsNumberValidation ? row.querySelector("[data-schema-maximum]").value : "";
++      const pattern = supportsStringValidation ? row.querySelector("[data-schema-pattern]").value : "";
++      const errorMessage = row.querySelector("[data-schema-message]").value.trim();
++      if (minimum !== "") spec.minimum = Number(minimum);
++      if (maximum !== "") spec.maximum = Number(maximum);
++      if (spec.minimum !== undefined && spec.maximum !== undefined && spec.minimum > spec.maximum) { toast(t("management.invalidRange", { name }), "err"); return; }
++      if (pattern) { try { new RegExp(pattern); } catch { toast(t("management.invalidPattern", { name }), "err"); return; } spec.pattern = pattern; }
++      if ((supportsNumberValidation || supportsStringValidation) && errorMessage) spec.errorMessage = errorMessage;
++      properties[name] = spec;
++      if (row.querySelector("[data-schema-required]").checked) required.push(name);
++    }
++    body.propertySchema = { type: "object", properties, required, additionalProperties: false };
    }
--  const r = await api("POST", `/api/admin/registries/${state.registry}/forms`, body);
-+  const r = await api("POST", `/api/admin/registries/${state.registry}/${kind}-forms`, body);
-   if (ok(r, `Form created → config v${r.data.version}`)) { await refreshMeta(); reManage(); }
+   const r = await api("POST", `/api/admin/registries/${state.registry}/${kind}-forms`, body);
+-  if (ok(r, `Form created → config v${r.data.version}`)) { await refreshMeta(); reManage(); }
++  if (ok(r, `${editing ? "Form saved" : "Form created"} → config v${r.data.version}`)) { await refreshMeta(); reManage(); }
  }
  
  function ruleCreateCard() {
@@ -200,26 +244,21 @@ index c917fe8e6b55c76538e01a6fb3e005884a7842c3..9f0c0fcbaf7f25fc2eb303d3125a22b0
  }
  
  /** Render a list and its create operation as one component. The editor replaces the list until saved or cancelled. */
- function selfContainedList(body, title, cols, rows, emptyMsg, actionLabel, createForm) {
--  const card = listCard(title, cols, rows, emptyMsg);
--  const showList = () => reManage();
--  card.append(h("div", { class: "list-actions" },
--    h("button", { class: "btn", onclick: () => {
--      card.replaceChildren(createForm(showList));
--      card.classList.add("editing");
--    } }, actionLabel)));
--  body.append(card);
-+  const renderCard = () => {
-+    const card = listCard(title, cols, rows, emptyMsg);
-+    const showList = () => card.replaceWith(renderCard());
-+    card.append(h("div", { class: "list-actions" },
-+      h("button", { class: "btn", onclick: () => {
-+        card.replaceChildren(createForm(showList));
-+        card.classList.add("editing");
-+      } }, actionLabel)));
-+    return card;
-+  };
-+  body.append(renderCard());
+-function selfContainedList(body, title, cols, rows, emptyMsg, actionLabel, createForm) {
++function selfContainedList(body, title, cols, rows, emptyMsg, actionLabel, createForm, editForm) {
+   const renderCard = () => {
+-    const card = listCard(title, cols, rows, emptyMsg);
+     const showList = () => card.replaceWith(renderCard());
++    const displayCols = editForm ? [...cols, { header: "", get: (row) => h("button", { class: "btn sm ghost", onclick: () => { card.replaceChildren(editForm(row, showList)); card.classList.add("editing"); } }, t("common.edit")) }] : cols;
++    const card = listCard(title, displayCols, rows, emptyMsg);
+     card.append(h("div", { class: "list-actions" },
+       h("button", { class: "btn", onclick: () => {
+         card.replaceChildren(createForm(showList));
+         card.classList.add("editing");
+       } }, actionLabel)));
+     return card;
+   };
+   body.append(renderCard());
  }
  
  /** A card with a table of current items. `cols` = [{header, get, cls?}]. */
@@ -237,77 +276,46 @@ index c917fe8e6b55c76538e01a6fb3e005884a7842c3..9f0c0fcbaf7f25fc2eb303d3125a22b0
    return h("div", { class: "hint" }, "No read endpoint yet — existing items aren’t listed. This section is create-only for now.");
  }
  
- // ---- shared building blocks ------------------------------------------------
- 
- function caseTable(m, cases, onOpen, extra) {
-   const head = h("tr", null, h("th", null, t("table.diary")), h("th", null, t("table.category")), h("th", null, t("table.state")), h("th", null, ""));
-   if (extra) head.append(h("th", null, extra.header));
-   const tb = h("tbody");
-   for (const c of cases) {
-     const tr = h("tr", { class: "click", onclick: () => onOpen(c) },
-@@ -609,53 +621,58 @@ function caseTable(m, cases, onOpen, extra) {
- 
- async function caseDetailCard(tab, diary) {
-   const m = meta();
-   const r = await api("GET", `/api/registries/${state.registry}/cases/${encodeURIComponent(diary)}`);
-   const card = h("div", { class: "card" });
-   card.append(h("div", { class: "inline", style: "justify-content:space-between" },
-     h("h3", null, t("case.heading", { diary })),
-     h("button", { class: "btn ghost sm", onclick: () => { state.open[tab] = null; render(); } }, t("common.close"))));
-   if (r.status !== 200) { card.append(h("div", { class: "hint" }, t("case.notVisible", { status: r.status }))); return card; }
-   const c = r.data.case;
-   card.append(h("dl", { class: "kv" },
-     h("dt", null, t("table.state")), h("dd", null, stateBadge(m, c.state, tab === "publishing" || c.isPublished)),
-     h("dt", null, t("table.category")), h("dd", { class: "mono" }, c.category),
-     h("dt", null, c.created ? t("case.created") : t("case.published")), h("dd", { class: "mono" }, c.created || c.publishedAt || "—")));
-   if (c.fields && Object.keys(c.fields).length) {
-     const publicFields = h("dl", { class: "kv" });
-     for (const [name, value] of Object.entries(c.fields)) publicFields.append(h("dt", null, name), h("dd", null, String(value ?? "—")));
-     card.append(h("h3", null, t("case.publishedFields")), publicFields);
-   }
- 
-   // Worker actions.
-   if (tab === "worker" && state.identity.startsWith("worker:")) card.append(await workerActions(m, c, r.data.history));
-   // Operations are a self-contained list. Workers can select operation forms;
-   // customers can select any form available for acting on their own case.
-   const isCustomer = tab === "customer" && state.identity.startsWith("customer:");
-+  const splitForms = [
-+    ...(m.caseForms || []).map((form) => ({ ...form, kind: "case" })),
-+    ...(m.operationForms || []).map((form) => ({ ...form, kind: "operation" })),
-+  ];
-+  const configuredForms = m.caseForms || m.operationForms ? splitForms : (m.forms || []);
-   const forms = tab === "worker" && state.identity.startsWith("worker:")
--    ? (m.forms || []).filter((f) => f.audience === "worker" && f.kind === "operation")
--    : isCustomer ? (m.forms || []).filter((f) => f.audience === "customer") : [];
-+    ? configuredForms.filter((form) => (form.audience === "worker" || form.audience === "both") && form.kind === "operation")
-+    : isCustomer ? configuredForms.filter((form) => form.audience === "customer" || form.audience === "both") : [];
-   card.append(operationList(c, r.data.history, forms, isCustomer));
-   return card;
- }
- 
- async function workerActions(m, c, history) {
-   const wrap = h("div", null);
-   // Transition control.
-   const allowed = (m.transitions || []).filter((t) => t.from === c.state).map((t) => t.to);
-   const tRow = h("div", { class: "inline action-picker", style: "margin:8px 0" });
-   if (allowed.length) {
-     const sel = h("select", { id: "tr_to", "aria-label": t("transition.stateLabel") },
-       h("option", { value: "", disabled: true, selected: true }, t("transition.chooseState")),
-       ...allowed.map((s) => h("option", { value: s }, (m.states.find((x) => x.id === s) || {}).name || s)));
-     tRow.append(h("button", { class: "btn", onclick: async () => {
-       if (!sel.value) { toast(t("transition.chooseStateRequired"), "err"); sel.focus(); return; }
-       const r = await api("POST", `/api/registries/${state.registry}/cases/${encodeURIComponent(c.diaryNumber)}/transition`, { toState: sel.value });
-       if (ok(r, `Now ${sel.value}${r.data.rulesFired ? ` · ${r.data.rulesFired} rule(s) fired` : ""}`)) { state.open.worker = c.diaryNumber; renderWorker($("#view")); }
-     } }, t("transition.apply")), sel);
-   } else tRow.append(h("span", { class: "op-meta" }, "No onward transitions from this state."));
-   wrap.append(tRow);
- 
+@@ -676,105 +733,118 @@ async function workerActions(m, c, history) {
    // Assign + explicit publication projection.
    const actions = h("div", { class: "inline", style: "margin:8px 0" },
      h("button", { class: "btn sm ghost", onclick: async () => { const r = await api("POST", `/api/registries/${state.registry}/cases/${encodeURIComponent(c.diaryNumber)}/assign`, {}); ok(r, t("worker.assignedToast")); } }, t("worker.assign")),
      h("button", { class: "btn sm ghost", onclick: async () => {
-@@ -685,66 +702,68 @@ function operationList(c, history, forms, allCustomerForms = false) {
-     h("span", { class: "op-meta" }, `${op.direction} · by ${op.actorKind}${op.comment ? " · " + op.comment : ""}`)));
+       const fields = [...document.querySelectorAll("[data-publish-field]:checked")].map((el) => el.dataset.publishField);
+       const operations = [...document.querySelectorAll("[data-publish-operation]:checked")].map((el) => Number(el.dataset.publishOperation));
+       const r = await api("POST", `/api/registries/${state.registry}/cases/${encodeURIComponent(c.diaryNumber)}/publish`, { publish: !c.isPublished, fields, operations });
+       if (ok(r, r.data && r.data.isPublished ? "Published" : "Unpublished")) { state.open.worker = c.diaryNumber; renderWorker($("#view")); }
+     } }, c.isPublished ? "Unpublish" : "Publish"));
+   wrap.append(actions);
+   if (!c.isPublished) {
+     const eligible = m.fields.filter((field) => field.publicationEligible);
+     wrap.append(h("div", { class: "hint" }, "Select exactly what the public projection may contain:"));
+     wrap.append(h("div", { class: "inline wrap" }, ...eligible.map((field) =>
+       h("label", { class: "inline" }, h("input", { type: "checkbox", "data-publish-field": field.name }), field.name))));
+     wrap.append(h("div", { class: "inline wrap" }, ...history.map((op) =>
+       h("label", { class: "inline" }, h("input", { type: "checkbox", "data-publish-operation": String(op.operationId) }), `#${op.operationId} ${op.type}`))));
+   }
+ 
+   return wrap;
+ }
+ 
+ function operationList(c, history, forms, allCustomerForms = false) {
+   const card = h("div", { class: "card operation-list" }, h("h3", null, `${t("case.operations")} (${history.length})`));
+   const hist = h("div", { class: "hist", "aria-label": t("case.history") });
+-  for (const op of history) hist.append(h("div", { class: "op" },
+-    h("span", { class: "op-type" }, `#${op.operationId} ${op.type}`), " ",
+-    h("span", { class: "op-meta" }, `${op.direction} · by ${op.actorKind}${op.comment ? " · " + op.comment : ""}`)));
++  for (const op of history) {
++    const item = h("div", { class: "op" },
++      h("span", { class: "op-type" }, `#${op.operationId} ${op.type}`), " ",
++      h("span", { class: "op-meta" }, `${op.direction} · by ${op.actorKind}${op.comment ? " · " + op.comment : ""}`));
++    if (op.properties && Object.keys(op.properties).length) {
++      const values = h("dl", { class: "operation-properties" });
++      for (const [name, value] of Object.entries(op.properties)) values.append(h("dt", null, name), h("dd", null, value === null ? "—" : String(value)));
++      item.append(values);
++    }
++    hist.append(item);
++  }
    card.append(hist);
  
    if (forms.length) {
@@ -332,7 +340,7 @@ index c917fe8e6b55c76538e01a6fb3e005884a7842c3..9f0c0fcbaf7f25fc2eb303d3125a22b0
    const subset = f.fieldSubset || m.fields.map((x) => x.name);
    const defs = m.fields.filter((x) => subset.includes(x.name));
    const box = h("div", { class: "card", style: "background:var(--panel-2)" }, h("h3", null, f.title + (f.requiresApproval ? " (needs approval)" : "")));
-+  if (f.description) box.append(h("p", { class: "hint" }, f.description));
+   if (f.description) box.append(h("p", { class: "hint" }, f.description));
    for (const d of defs) box.append(h("div", { class: "field" }, h("label", null, d.name), fieldInput(d)));
    const submit = h("button", { class: "btn sm", onclick: async () => {
      const fields = {};
@@ -349,12 +357,16 @@ index c917fe8e6b55c76538e01a6fb3e005884a7842c3..9f0c0fcbaf7f25fc2eb303d3125a22b0
    const schema = f.propertySchema || { properties: {}, required: [] };
    const props = Object.entries(schema.properties || {});
    const box = h("div", { class: "card", style: "background:var(--panel-2)" }, h("h3", null, f.title));
-+  if (f.description) box.append(h("p", { class: "hint" }, f.description));
+   if (f.description) box.append(h("p", { class: "hint" }, f.description));
    for (const [name, spec] of props) {
      const req = (schema.required || []).includes(name);
-     const input = spec.type === "boolean" ? h("select", { id: "op_" + name }, h("option", null, "false"), h("option", null, "true"))
-       : h("input", { id: "op_" + name, type: spec.type === "integer" || spec.type === "number" ? "number" : "text" });
-     box.append(h("div", { class: "field" }, h("label", null, name, req ? h("span", { class: "req" }, " *") : ""), input));
+-    const input = spec.type === "boolean" ? h("select", { id: "op_" + name }, h("option", null, "false"), h("option", null, "true"))
+-      : h("input", { id: "op_" + name, type: spec.type === "integer" || spec.type === "number" ? "number" : "text" });
+-    box.append(h("div", { class: "field" }, h("label", null, name, req ? h("span", { class: "req" }, " *") : ""), input));
++    const attrs = { id: "op_" + name, required: req, min: spec.minimum, max: spec.maximum, pattern: spec.pattern, title: spec.errorMessage };
++    const input = spec.type === "boolean" ? h("select", attrs, h("option", { value: "" }, "—"), h("option", { value: "false" }, "false"), h("option", { value: "true" }, "true"))
++      : h("input", { ...attrs, type: spec.type === "integer" || spec.type === "number" ? "number" : "text", step: spec.type === "number" ? "any" : spec.type === "integer" ? "1" : null });
++    box.append(h("div", { class: "field" }, h("label", null, name, req ? h("span", { class: "req" }, ` · ${t("form.required")}`) : h("span", { class: "optional" }, ` · ${t("form.optional")}`)), input));
    }
    if (f.allowAttachments) box.append(h("div", { class: "field" },
      h("label", null, "Attachment filename"), h("input", { id: "op_att_name", placeholder: "deed.txt" }),
@@ -365,6 +377,10 @@ index c917fe8e6b55c76538e01a6fb3e005884a7842c3..9f0c0fcbaf7f25fc2eb303d3125a22b0
        const el = $("#op_" + name); if (!el || el.value === "") continue;
        properties[name] = spec.type === "boolean" ? el.value === "true" : (spec.type === "integer" || spec.type === "number") ? Number(el.value) : el.value;
      }
++    const missing = props.find(([name]) => (schema.required || []).includes(name) && !$("#op_" + name)?.value);
++    if (missing) { toast(t("operation.requiredProperty", { name: missing[0] }), "err"); $("#op_" + missing[0]).focus(); return; }
++    const invalid = props.find(([name]) => $("#op_" + name)?.value && !$("#op_" + name).checkValidity());
++    if (invalid) { toast(invalid[1].errorMessage || t("operation.invalidProperty", { name: invalid[0] }), "err"); $("#op_" + invalid[0]).focus(); return; }
      const body = { diaryNumber: c.diaryNumber, properties };
      if (f.allowAttachments && $("#op_att_name") && $("#op_att_name").value) {
        body.attachments = [{ filename: $("#op_att_name").value, contentType: "text/plain", base64: btoa($("#op_att_body").value || "") }];
@@ -375,40 +391,70 @@ index c917fe8e6b55c76538e01a6fb3e005884a7842c3..9f0c0fcbaf7f25fc2eb303d3125a22b0
    box.append(h("div", { class: "inline" }, submit,
      onCancel && h("button", { class: "btn sm ghost", onclick: onCancel }, t("common.cancel"))));
    return box;
+ }
+ 
+ function categorySelect() {
+   return h("select", { id: "cat_sel" }, ...meta().categories.map((c) => h("option", { value: c.code }, `${c.code} — ${c.name}`)));
+ }
+ function stateSelect(id) {
+   return h("select", { id }, ...meta().states.map((s) => h("option", { value: s.id }, s.name)));
+ }
+ 
+ boot().catch((e) => { console.error(e); toast(t("error.startFailed", { message: e.message }), "err"); });
 diff --git a/public/locales/fi.js b/public/locales/fi.js
-index 303a0afd8cc7299712684e10e60b2c6999a2a5de..5c8c1c235ee4755f1b2b2401173bf8657a2d9d60 100644
+index 5c8c1c235ee4755f1b2b2401173bf8657a2d9d60..e03bd63820b6721992b4350fadeec76b71bf883d 100644
 --- a/public/locales/fi.js
 +++ b/public/locales/fi.js
-@@ -66,79 +66,101 @@ export const messages = Object.freeze({
-   "publishing.queryPlaceholder": "vähintään 3 merkkiä",
-   "publishing.categoryPlaceholder": "luokan alku, esim. 105",
-   "publishing.currentRegistry": "Nykyinen rekisteri",
-   "publishing.allRegistries": "Kaikki rekisterit",
-   "publishing.search": "Hae",
-   "publishing.results": "Julkaistut asiat",
-   "publishing.empty": "Ei julkaistuja asioita. Käsittelijä voi julkaista asian sen tietonäkymästä.",
-   "management.title": "Hallinta",
-   "management.subtitle": "Määritä rekisteri ilman ohjelmistojulkaisua. Vain ylläpitäjille.",
-   "management.switchHint": "Vaihda käyttäjärooliksi Ylläpitäjä käyttääksesi hallintaa.",
-   "management.fields": "Kentät",
-   "management.states": "Tilat",
-   "management.transitions": "Siirtymät",
-   "management.categories": "Luokat",
-   "management.forms": "Lomakkeet",
-   "management.rules": "Säännöt",
-   "management.authorizations": "Käyttöoikeudet",
-   "management.tokens": "API-avaimet",
-   "management.config": "Määritysversiot",
-   "management.exports": "Viennit",
-   "management.currentFields": "Nykyiset kentät",
-   "management.currentStates": "Nykyiset tilat",
-   "management.currentTransitions": "Nykyiset siirtymät",
-   "management.currentCategories": "Nykyiset luokat (koko alusta)",
-   "management.currentForms": "Nykyiset lomakkeet",
-+  "management.caseForms": "Asialomakkeet",
-+  "management.operationForms": "Toimenpidelomakkeet",
-   "management.name": "Nimi",
-   "management.type": "Tyyppi",
+@@ -1,46 +1,48 @@
+ "use strict";
+ 
+ export const messages = Object.freeze({
+   "app.title": "Rekisterialusta — hallintakonsoli",
+   "brand.title": "Rekisterialusta",
+   "brand.subtitle": "Hallintakonsoli · MVP",
+   "context.identity": "Käyttäjärooli",
+   "context.registry": "Rekisteri",
+   "context.language": "Kieli",
+   "language.fi": "Suomi",
+   "nav.customer": "Asiointi",
+   "nav.worker": "Asianhallinta",
+   "nav.publishing": "Julkaiseminen",
+   "nav.management": "Hallinta",
+   "footer.notice": "Kehitysympäristön testi-identiteetti · muistissa olevat tiedot nollautuvat palvelimen uudelleenkäynnistyksessä · vaihda käyttäjäroolia kokeillaksesi käyttöoikeuksia.",
+   "common.loading": "Ladataan…",
+   "common.refresh": "Päivitä",
+   "common.open": "Avaa",
+   "common.close": "Sulje",
+   "common.submit": "Lähetä",
+   "common.cancel": "Peruuta",
++  "common.save": "Tallenna",
++  "common.edit": "Muokkaa",
+   "common.yes": "kyllä",
+   "common.no": "ei",
+   "common.true": "tosi",
+   "common.false": "epätosi",
+   "common.none": "—",
+   "common.nothingYet": "Ei vielä tietoja.",
+   "status.published": "julkaistu",
+   "identity.public": "Julkinen (anonyymi)",
+   "identity.customer1": "Kansalainen 1 — asiakas",
+   "identity.customer2": "Kansalainen 2 — asiakas",
+   "identity.workerAnna": "Anna — käsittelijä (ympäristö 105)",
+   "identity.workerBo": "Bo — käsittelijä (rakentaminen 200)",
+   "identity.workerCara": "Cara — käsittelijä (avustukset 300)",
+   "identity.admin": "Ylläpitäjä — käsittelijä (hallinta)",
+   "error.requestFailed": "pyyntö epäonnistui",
+   "error.startFailed": "Käynnistys epäonnistui: {message}",
+   "customer.title": "Asiointi",
+   "customer.subtitle": "Tarkastele omia asioitasi, tee toimenpiteitä ja aloita uusi asia.",
+   "customer.switchHint": "Vaihda käyttäjärooliksi Kansalainen 1 tai Kansalainen 2 käyttääksesi asiointia.",
+   "customer.start": "+ Aloita uusi asia",
+   "customer.myCases": "Omat asiat",
+   "customer.signInHint": "Kirjaudu asiakkaana nähdäksesi omat asiasi.",
+   "customer.empty": "Ei asioita. Aloita uusi asia yllä.",
+   "customer.newTitle": "Aloita uusi asia",
+   "customer.initialState": "Asian alkutila: {state}",
+@@ -95,83 +97,101 @@ export const messages = Object.freeze({
    "management.nullable": "Voi olla tyhjä",
    "management.open": "Avoin",
    "management.waiting": "Odottaa",
@@ -425,37 +471,51 @@ index 303a0afd8cc7299712684e10e60b2c6999a2a5de..5c8c1c235ee4755f1b2b2401173bf865
    "management.approval": "Hyväksyntä",
    "management.required": "vaaditaan",
    "management.attachments": "Liitteet",
-+  "management.operationType": "Toimenpidetyyppi",
-+  "management.formDescription": "Kuvaus ja täyttöohjeet",
-+  "management.audienceCustomer": "asiakas",
-+  "management.audienceWorker": "käsittelijä",
-+  "management.audienceBoth": "asiakas ja käsittelijä",
-+  "management.requiresApproval": "Vaatii hyväksynnän",
-+  "management.allowAttachments": "Salli liitteet",
-+  "management.fieldSubset": "Kenttäjoukko — jos mitään ei valita, kaikki kentät sallitaan",
-+  "management.propertySchema": "Ominaisuusskeema (JSON)",
-+  "management.noFieldsDefined": "kenttiä ei ole määritelty",
+   "management.operationType": "Toimenpidetyyppi",
+   "management.formDescription": "Kuvaus ja täyttöohjeet",
+   "management.audienceCustomer": "asiakas",
+   "management.audienceWorker": "käsittelijä",
+   "management.audienceBoth": "asiakas ja käsittelijä",
+   "management.requiresApproval": "Vaatii hyväksynnän",
+   "management.allowAttachments": "Salli liitteet",
+   "management.fieldSubset": "Kenttäjoukko — jos mitään ei valita, kaikki kentät sallitaan",
+   "management.propertySchema": "Ominaisuusskeema (JSON)",
++  "management.properties": "Lomakkeen ominaisuudet",
++  "management.propertyName": "Ominaisuuden nimi",
++  "management.propertyRequired": "Pakollinen",
++  "management.minimum": "Pienin arvo",
++  "management.maximum": "Suurin arvo",
++  "management.pattern": "Muoto (säännöllinen lauseke)",
++  "management.validationMessage": "Validoinnin virheviesti",
++  "management.invalidPattern": "Ominaisuuden {name} muoto ei ole kelvollinen säännöllinen lauseke",
++  "management.invalidRange": "Ominaisuuden {name} pienin arvo ei voi olla suurinta arvoa suurempi",
++  "management.addProperty": "Lisää ominaisuus",
++  "management.removeProperty": "Poista",
++  "management.propertyNameRequired": "Anna jokaiselle ominaisuudelle nimi",
++  "management.duplicateProperty": "Ominaisuus {name} on määritelty kahdesti",
++  "management.editForm": "Muokkaa lomaketta",
+   "management.noFieldsDefined": "kenttiä ei ole määritelty",
    "management.noFields": "Kenttiä ei ole vielä määritelty.",
    "management.noStates": "Tiloja ei ole vielä määritelty.",
    "management.noTransitions": "Siirtymiä ei ole vielä määritelty.",
    "management.noCategories": "Luokkia ei ole vielä määritelty.",
    "management.noForms": "Lomakkeita ei ole vielä määritelty.",
-+  "management.noCaseForms": "Asialomakkeita ei ole vielä määritelty.",
-+  "management.noOperationForms": "Toimenpidelomakkeita ei ole vielä määritelty.",
+   "management.noCaseForms": "Asialomakkeita ei ole vielä määritelty.",
+   "management.noOperationForms": "Toimenpidelomakkeita ei ole vielä määritelty.",
    "management.addField": "Lisää kenttä",
    "management.addStatutoryField": "Lisää lakisääteinen kenttä",
    "management.addState": "Lisää tila",
    "management.addTransition": "Lisää siirtymä",
    "management.addCategory": "Lisää luokka",
    "management.createForm": "Luo lomake",
-+  "management.createCaseForm": "Luo asialomake",
-+  "management.createOperationForm": "Luo toimenpidelomake",
-+  "management.formIdPlaceholder": "esim. luvan_taydennys",
-+  "management.formTitlePlaceholder": "Täydennyspyyntö",
-+  "management.formDescriptionPlaceholder": "Kerro, kuinka lomake täytetään",
-+  "management.operationTypePlaceholder": "esim. täydennys",
-+  "management.formRequired": "Lomaketunnus, otsikko ja kuvaus ovat pakollisia",
-+  "management.invalidPropertySchema": "Ominaisuusskeema ei ole kelvollista JSON-muotoa",
+   "management.createCaseForm": "Luo asialomake",
+   "management.createOperationForm": "Luo toimenpidelomake",
+   "management.formIdPlaceholder": "esim. luvan_taydennys",
+   "management.formTitlePlaceholder": "Täydennyspyyntö",
+   "management.formDescriptionPlaceholder": "Kerro, kuinka lomake täytetään",
+   "management.operationTypePlaceholder": "esim. täydennys",
+   "management.formRequired": "Lomaketunnus, otsikko ja kuvaus ovat pakollisia",
+   "management.invalidPropertySchema": "Ominaisuusskeema ei ole kelvollista JSON-muotoa",
    "table.diary": "Diaarinumero",
    "table.category": "Luokka",
    "table.state": "Tila",
@@ -467,6 +527,10 @@ index 303a0afd8cc7299712684e10e60b2c6999a2a5de..5c8c1c235ee4755f1b2b2401173bf865
    "case.history": "Historia (vain lisäykset)",
    "field.category": "Luokka",
    "operation.recorded": "Toimenpide kirjattu",
++  "operation.requiredProperty": "Täytä pakollinen ominaisuus: {name}",
++  "operation.invalidProperty": "Tarkista ominaisuuden {name} arvo",
++  "form.required": "pakollinen",
++  "form.optional": "valinnainen",
    "case.operations": "Toimenpiteet",
    "operation.add": "Lisää toimenpide",
    "operation.formLabel": "Toimenpidelomake",
@@ -481,1590 +545,461 @@ index 303a0afd8cc7299712684e10e60b2c6999a2a5de..5c8c1c235ee4755f1b2b2401173bf865
    "transition.chooseState": "Valitse uusi tila",
    "transition.chooseStateRequired": "Valitse ensin uusi tila"
  });
-diff --git a/src/api/admin-routes.ts b/src/api/admin-routes.ts
-index 2de99c637858a7095827417f286c34a75be1660e..17235d279338890a9b77f273fae5d12db9dc8170 100644
---- a/src/api/admin-routes.ts
-+++ b/src/api/admin-routes.ts
-@@ -1,36 +1,36 @@
- /**
-  * Management-portal REST routes (Architecture §5.8). All require an admin
-  * principal (worker with is_admin). These are the backend the management portal
-  * UI drives; exposing them as the same REST surface keeps one auth model.
-  */
  
- import type { Platform } from "./platform.ts";
- import { defineRoute, type Route } from "./router.ts";
- import type { ApiHandler, ApiRequest, ApiResponse } from "./http-types.ts";
- import {
--  isAdmin, addField, addState, addTransition, addForm, addRule, addCategory,
-+  isAdmin, addField, addState, addTransition, addForm, addCaseForm, addOperationForm, addRule, addCategory,
-   grantAuthorization, mintToken, revokeToken,
- } from "../services/admin.ts";
- import { exportAllRegistries } from "../services/exports.ts";
- import { listConfigVersions } from "../services/config-promote.ts";
- import type { HttpMethod } from "./tokens.ts";
+ export const sourceKeys = Object.freeze({
+   "Loading…": "common.loading", "Refresh": "common.refresh", "Open": "common.open", "Close": "common.close", "Submit": "common.submit",
+   "yes": "common.yes", "no": "common.no", "true": "common.true", "false": "common.false", "Nothing yet.": "common.nothingYet", "published": "status.published",
+   "Public (anonymous)": "identity.public", "Citizen One — customer": "identity.customer1", "Citizen Two — customer": "identity.customer2",
+   "Anna — worker (Environment 105)": "identity.workerAnna", "Bo — worker (Building 200)": "identity.workerBo", "Cara — worker (Grants 300)": "identity.workerCara", "Admin — worker (management)": "identity.admin",
+   "Customer portal": "customer.title", "See and act on your own cases, and start new ones.": "customer.subtitle",
+   "Switch “Acting as” to Citizen One or Two to use this portal.": "customer.switchHint", "+ Start a new case": "customer.start", "My cases": "customer.myCases",
+   "Sign in as a customer to see your cases.": "customer.signInHint", "No cases yet. Start one above.": "customer.empty", "Start a new case": "customer.newTitle", "Create case": "customer.create",
+   "Case-worker portal": "worker.title", "Your queue, bounded by category authorization.": "worker.subtitle",
+   "Switch “Acting as” to a worker (Anna 105, Bo 200, Cara 300) to use this portal.": "worker.switchHint", "Assigned to me": "worker.assigned",
+diff --git a/public/styles.css b/public/styles.css
+index 2de3f869d632bedbceaa211ca953164fc04297c4..44957987ddbed0ca24adadc2722fa92ecf09f687 100644
+--- a/public/styles.css
++++ b/public/styles.css
+@@ -99,67 +99,83 @@ h3 { margin: 24px 0 12px; font-size: 18px; line-height: 1.3; }
+ table { width: 100%; border-collapse: collapse; font-size: 14px; }
+ th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+ th { color: var(--text); background: var(--panel-2); font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+ tr.click { cursor: pointer; }
+ tr.click:hover { background: #f2f2ff; }
+ .mono { font-family: var(--mono); font-size: 12.5px; }
+ .badge { display: inline-block; padding: 3px 9px; border-radius: 2px; font-size: 12px; font-weight: 700; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); }
+ .badge.open { color: var(--ok); border-color: var(--ok); background: #edf7f1; }
+ .badge.closed { color: var(--muted); }
+ .badge.waiting { color: var(--warn); border-color: #b27c13; background: #fff6df; }
+ .badge.property { padding: 2px 8px; border-radius: 999px; color: #174f54; border-color: var(--brand-aqua); background: #e5f5f6; font-size: 11px; }
+ button.btn { min-height: 42px; background: var(--brand-blue); color: #fff; border: 2px solid var(--brand-blue); border-radius: 2px; padding: 8px 16px; font: 700 14px var(--sans); cursor: pointer; }
+ button.btn:hover { background: #2323aa; border-color: #2323aa; }
+ button.btn.ghost { background: transparent; color: var(--brand-blue); border-color: var(--brand-blue); }
+ button.btn.ghost:hover { background: #eeeeff; }
+ button.btn.sm { min-height: 34px; padding: 5px 10px; font-size: 12.5px; }
+ button.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+ .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+ .field label { color: var(--text); font-size: 13px; font-weight: 700; }
+ .field .req { color: var(--danger); }
+ .hist { border-left: 4px solid var(--brand-aqua); padding-left: 16px; margin: 8px 0; }
+ .hist .op { padding: 9px 0; border-bottom: 1px solid var(--line); }
+ .hist .op:last-child { border-bottom: none; }
+ .op-type { font-weight: 700; }
+ .op-meta { color: var(--muted); font-size: 12px; }
++.operation-properties { display: grid; grid-template-columns: minmax(100px, max-content) 1fr; gap: 3px 14px; margin: 8px 0 0; font-size: 13px; }
++.operation-properties dt { color: var(--muted); font-weight: 700; }
++.operation-properties dd { margin: 0; overflow-wrap: anywhere; }
++.schema-properties { display: grid; gap: 10px; }
++.schema-property { display: grid; gap: 12px; padding: 12px; background: var(--panel-2); border: 1px solid var(--line); }
++.schema-primary { display: grid; grid-template-columns: minmax(180px, 2fr) minmax(140px, 1fr) auto; align-items: end; gap: 10px; }
++.schema-validation { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); align-items: end; gap: 10px; }
++.schema-actions { display: flex; }
++.schema-property .field { margin: 0; }
++.schema-property [hidden] { display: none; }
++.schema-check { min-height: 42px; font-size: 13px; }
++.schema-string + .schema-message { grid-column: span 2; }
++.schema-builder > .btn { align-self: flex-start; }
++.optional { color: var(--muted); font-weight: 400; }
+ .empty { color: var(--muted); font-style: italic; padding: 12px 0; }
+ .toast { position: fixed; right: 24px; bottom: 24px; background: var(--panel); border: 1px solid var(--line); border-left: 6px solid var(--brand-blue); border-radius: 2px; padding: 14px 18px; max-width: 400px; box-shadow: 0 12px 30px rgba(0,0,0,.18); font-size: 14px; z-index: 50; }
+-.toast.err { border-left-color: var(--danger); }
++.toast.err { left: 50%; right: auto; text-align: center; transform: translateX(-50%); border-left-color: var(--danger); }
+ .toast.ok { border-left-color: var(--brand-green); }
+ .foot { display: flex; justify-content: center; align-items: center; gap: 16px; color: #fff; background: var(--brand-blue); font-size: 12px; text-align: center; padding: 26px 20px; }
+ .foot-mark { display: grid; grid-template-columns: repeat(2, 10px); gap: 2px; flex: 0 0 auto; }
+ .foot-mark i { width: 10px; height: 10px; background: var(--brand-green); border-radius: 10px 10px 0 0; }
+ .foot-mark i:nth-child(2) { background: var(--brand-coral); border-radius: 50%; }
+ .foot-mark i:nth-child(3) { background: var(--brand-aqua); border-radius: 50%; }
+ .foot-mark i:nth-child(4) { background: #fff; border-radius: 0 0 10px 10px; }
+ .kv { display: grid; grid-template-columns: max-content 1fr; gap: 7px 18px; font-size: 14px; }
+ .kv dt { color: var(--muted); font-weight: 700; }
+ .kv dd { margin: 0; }
+ .hint { background: #edf7f7; border-left: 5px solid var(--brand-aqua); padding: 13px 15px; color: var(--text); font-size: 14px; }
+ .token-raw { font-family: var(--mono); font-size: 12px; word-break: break-all; background: var(--panel-2); padding: 10px; border: 1px solid var(--line); }
+ .inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+ .inline.wrap { align-items: flex-start; gap: 8px 16px; }
+ .action-picker > .btn, .action-picker > select { height: 42px; min-height: 42px; }
+ .subnav { border-top: 1px solid var(--line); padding-top: 16px; margin: 8px 0 20px; }
+ .mgmt-body > .hint { margin-bottom: 20px; }
+ textarea { width: 100%; resize: vertical; font-family: var(--mono); font-size: 12.5px; }
+ @media (max-width: 860px) {
+   .topbar { align-items: flex-start; padding: 18px 20px; }
+   .service-name { display: none; }
+   .context { width: 100%; justify-content: stretch; }
+   .context label { flex: 1 1 220px; }
+   .tabs { padding-inline: 12px; }
+   .tabs button { flex: 1 1 auto; padding-inline: 10px; }
+ }
+ @media (max-width: 560px) {
++  .schema-primary, .schema-validation { grid-template-columns: 1fr; align-items: start; }
++  .schema-string + .schema-message { grid-column: auto; }
+   .brand-logo { width: 230px; max-width: 100%; }
+   main { padding: 30px 14px 48px; }
+   .card { padding: 16px; overflow-x: auto; }
+   .list-filters { margin-inline: -16px; padding-inline: 16px; }
+   .list-actions { margin-inline: -16px; margin-bottom: -16px; padding-inline: 16px; }
+   .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+   .tabs button { text-align: left; }
+   .foot { align-items: flex-start; text-align: left; }
+ }
+ @media (prefers-reduced-motion: reduce) {
+   * { scroll-behavior: auto !important; }
+ }
+diff --git a/src/core/queries.ts b/src/core/queries.ts
+index 6a9a6b5b7dfb635922ded5b0baffc134b5160808..282bf9725538c2212a87400cdf76d80719685f3c 100644
+--- a/src/core/queries.ts
++++ b/src/core/queries.ts
+@@ -21,87 +21,89 @@ export interface CaseView {
  
- function obj(body: unknown): Record<string, unknown> {
-   return body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+ export interface PublishedCaseView {
+   diaryNumber: string;
+   category: string;
+   state: string;
+   fields: Record<string, unknown>;
+   publishedAt: string;
  }
  
- /** Wrap a handler so it runs only for admins; else 403. */
- function admin(fn: ApiHandler): ApiHandler {
-   return async (platform, req) => {
-     if (!(await isAdmin(platform, req.principal))) return { status: 403, body: { error: "admin authentication required" } };
-     try {
-       return await fn(platform, req);
-     } catch (err) {
-       return { status: 400, body: { error: (err as Error).message } };
-     }
-   };
+ export interface PublishedSearchOptions {
+   readonly query?: string;
+   readonly categoryPrefix?: string;
+   readonly limit?: number;
  }
  
- const fields: ApiHandler = async (p, req) => {
-   const b = obj(req.body);
-   const r = await addField(p, req.params.registry!, {
-@@ -40,50 +40,60 @@ const fields: ApiHandler = async (p, req) => {
-     legalBasis: String(b.legalBasis ?? ""), purpose: String(b.purpose ?? ""),
-     sensitivity: b.sensitivity as "public" | "normal" | "sensitive" | "restricted",
-     retentionPolicy: String(b.retentionPolicy ?? ""),
-   }, p.clock.now());
-   return { status: 201, body: { version: r.version, addedColumns: r.addedColumns } };
- };
- 
- const states: ApiHandler = async (p, req) => {
-   const b = obj(req.body);
-   const r = await addState(p, req.params.registry!, { id: String(b.id), name: String(b.name ?? b.id), isOpen: b.isOpen !== false, isWaitingForCustomer: b.isWaitingForCustomer === true }, p.clock.now());
-   return { status: 201, body: { version: r.version } };
- };
- 
- const transitions: ApiHandler = async (p, req) => {
-   const b = obj(req.body);
-   const r = await addTransition(p, req.params.registry!, String(b.from), String(b.to), p.clock.now());
-   return { status: 201, body: { version: r.version } };
- };
- 
- const forms: ApiHandler = async (p, req) => {
-   const b = obj(req.body);
-   const r = await addForm(p, req.params.registry!, b as never, p.clock.now());
-   return { status: 201, body: { version: r.version } };
- };
- 
-+const caseForms: ApiHandler = async (p, req) => {
-+  const r = await addCaseForm(p, req.params.registry!, obj(req.body) as never, p.clock.now());
-+  return { status: 201, body: { version: r.version } };
-+};
-+
-+const operationForms: ApiHandler = async (p, req) => {
-+  const r = await addOperationForm(p, req.params.registry!, obj(req.body) as never, p.clock.now());
-+  return { status: 201, body: { version: r.version } };
-+};
-+
- const rules: ApiHandler = async (p, req) => {
-   const b = obj(req.body);
-   const r = await addRule(p, req.params.registry!, b as never, p.clock.now());
-   return { status: 201, body: { version: r.version } };
- };
- 
- const categories: ApiHandler = async (p, req) => {
-   const b = obj(req.body);
-   await addCategory(p, String(b.code), String(b.name ?? b.code), p.clock.now());
-   return { status: 201, body: { ok: true } };
- };
- 
- const authorizations: ApiHandler = async (p, req) => {
-   const b = obj(req.body);
-   await grantAuthorization(p, {
-     workerId: String(b.workerId), registryId: String(b.registryId), categoryId: String(b.categoryId),
-     ...(typeof b.canRead === "boolean" ? { canRead: b.canRead } : {}),
-     ...(typeof b.canWrite === "boolean" ? { canWrite: b.canWrite } : {}),
-     ...(typeof b.canTransition === "boolean" ? { canTransition: b.canTransition } : {}),
-     ...(typeof b.canApprove === "boolean" ? { canApprove: b.canApprove } : {}),
-     ...(typeof b.optedIn === "boolean" ? { optedIn: b.optedIn } : {}),
-     ...(b.validFrom !== undefined ? { validFrom: String(b.validFrom) } : {}),
-     ...(b.validUntil !== undefined ? { validUntil: String(b.validUntil) } : {}),
-   });
-   return { status: 201, body: { ok: true } };
-@@ -98,33 +108,35 @@ const tokens: ApiHandler = async (p, req) => {
-     ...(b.publishedOnly !== undefined ? { publishedOnly: b.publishedOnly === true } : {}),
-     ...(b.description !== undefined ? { description: String(b.description) } : {}),
-   }, p.clock.now());
-   // The raw token is returned ONCE, here, and never stored in plain text.
-   return { status: 201, body: minted };
- };
- 
- const revoke: ApiHandler = async (p, req) => {
-   const ok = await revokeToken(p, req.params.tokenId!);
-   return ok ? { status: 200, body: { revoked: true } } : { status: 404, body: { error: "token not found" } };
- };
- 
- const runExports: ApiHandler = async (p) => {
-   return { status: 200, body: { results: await exportAllRegistries(p, p.clock.now()) } };
- };
- 
- const configVersions: ApiHandler = async (p, req) => {
-   return { status: 200, body: { versions: await listConfigVersions(p.shared, req.params.registry!) } };
- };
- 
- export const adminRoutes: readonly Route<ApiHandler>[] = [
-   defineRoute("POST", "/api/admin/registries/:registry/fields", admin(fields)),
-   defineRoute("POST", "/api/admin/registries/:registry/states", admin(states)),
-   defineRoute("POST", "/api/admin/registries/:registry/transitions", admin(transitions)),
-   defineRoute("POST", "/api/admin/registries/:registry/forms", admin(forms)),
-+  defineRoute("POST", "/api/admin/registries/:registry/case-forms", admin(caseForms)),
-+  defineRoute("POST", "/api/admin/registries/:registry/operation-forms", admin(operationForms)),
-   defineRoute("POST", "/api/admin/registries/:registry/rules", admin(rules)),
-   defineRoute("GET", "/api/admin/registries/:registry/config-versions", admin(configVersions)),
-   defineRoute("POST", "/api/admin/registries/:registry/tokens", admin(tokens)),
-   defineRoute("POST", "/api/admin/registries/:registry/tokens/:tokenId/revoke", admin(revoke)),
-   defineRoute("POST", "/api/admin/categories", admin(categories)),
-   defineRoute("POST", "/api/admin/authorizations", admin(authorizations)),
-   defineRoute("POST", "/api/admin/exports/run", admin(runExports)),
- ];
-diff --git a/src/api/routes.ts b/src/api/routes.ts
-index d7acd379b4ddbc18447a2d89ced5238a884d0535..16086317f9174227bd09710c934f18ecfe85fda4 100644
---- a/src/api/routes.ts
-+++ b/src/api/routes.ts
-@@ -332,79 +332,85 @@ const getMeta: ApiHandler = async (platform, req) => {
-   if (req.principal.kind === "token" && (req.principal.scope.registryId !== h.def.registryId || !tokenAllows(req.principal.scope, "GET", "meta"))) return { status: 403, body: { error: "forbidden" } };
-   const locale = requestLocale(req);
-   const fallbacks = new Set<string>();
-   const includeTranslations = req.query.get("include")?.split(",").includes("translations") === true;
-   const isAdmin = req.principal.kind === "actor" && req.principal.actor.kind === "worker" && !!(await platform.shared.get("SELECT 1 AS ok FROM workers WHERE worker_id = ? AND is_admin = 1", [req.principal.actor.workerId]));
-   if (includeTranslations && !isAdmin) return { status: 403, body: { error: "translations require admin authorization" } };
-   const isWorker = req.principal.kind === "actor" && req.principal.actor.kind === "worker";
-   const isCustomer = req.principal.kind === "actor" && req.principal.actor.kind === "customer";
-   const projectionMetadata = req.principal.kind === "public" || (req.principal.kind === "token" && req.principal.scope.publishedOnly);
- 
-   const stateRows = await h.db.all("SELECT state_id, locale, name, description FROM state_translations");
-   const stateNames = translationMap(stateRows, "state_id", "name");
-   const stateDescriptions = translationMap(stateRows.filter((r) => r.description != null), "state_id", "description");
-   const stateTranslations = completeTranslations(stateRows, "state_id", ["name", "description"]);
-   const states = (await h.db.all("SELECT id, name, description, is_open, is_waiting_for_customer FROM states")).map((r) => ({
-     id: String(r.id), name: pick(stateNames.get(String(r.id)), String(r.name), locale, fallbacks),
-     description: stateDescriptions.has(String(r.id)) ? pick(stateDescriptions.get(String(r.id)), r.description == null ? "" : String(r.description), locale, fallbacks) : (r.description == null ? null : String(r.description)),
-     isOpen: Number(r.is_open) === 1, isWaitingForCustomer: Number(r.is_waiting_for_customer) === 1,
-     ...(includeTranslations ? { translations: Object.fromEntries(stateTranslations.get(String(r.id)) ?? []) } : {}),
-   }));
-   const transitions = (await h.db.all("SELECT from_state, to_state FROM state_transitions")).map((r) => ({ from: String(r.from_state), to: String(r.to_state) }));
-   const formRows = await platform.shared.all("SELECT ft.form_id, ft.locale, ft.title, ft.description FROM form_translations ft JOIN form_definitions f ON f.form_id = ft.form_id WHERE f.registry_id = ?", [h.def.registryId]);
-   const formNames = translationMap(formRows, "form_id", "title");
-   const formDescriptions = translationMap(formRows.filter((r) => r.description != null), "form_id", "description");
-   const formTranslations = completeTranslations(formRows, "form_id", ["title", "description"]);
--  const forms = (await platform.shared.all("SELECT form_id, kind, audience, title, requires_approval, field_subset, property_schema, allow_attachments, operation_type FROM form_definitions WHERE registry_id = ? AND active = 1", [h.def.registryId])).map((r) => ({
-+  const forms = (await platform.shared.all(`SELECT f.form_id, f.kind, f.audience, f.title, f.description,
-+      c.requires_approval, c.field_subset, o.property_schema, o.allow_attachments, o.operation_type
-+    FROM form_definitions f LEFT JOIN case_form_definitions c ON c.form_id = f.form_id
-+    LEFT JOIN operation_form_definitions o ON o.form_id = f.form_id
-+    WHERE f.registry_id = ? AND f.active = 1`, [h.def.registryId])).map((r) => ({
-     formId: String(r.form_id), kind: String(r.kind), audience: String(r.audience), title: pick(formNames.get(String(r.form_id)), String(r.title), locale, fallbacks),
--    description: formDescriptions.has(String(r.form_id)) ? pick(formDescriptions.get(String(r.form_id)), "", locale, fallbacks) : null,
-+    description: formDescriptions.has(String(r.form_id)) ? pick(formDescriptions.get(String(r.form_id)), String(r.description ?? ""), locale, fallbacks) : String(r.description ?? ""),
-     requiresApproval: Number(r.requires_approval) === 1, fieldSubset: r.field_subset ? JSON.parse(String(r.field_subset)) : null,
-     propertySchema: r.property_schema ? JSON.parse(String(r.property_schema)) : null, allowAttachments: Number(r.allow_attachments) === 1,
-     operationType: r.operation_type === null ? null : String(r.operation_type),
-     ...(includeTranslations ? { translations: Object.fromEntries(formTranslations.get(String(r.form_id)) ?? []) } : {}),
-   }));
-   const categoryNames = translationMap(await platform.shared.all("SELECT category_id, locale, name FROM category_translations"), "category_id", "name");
-   const categories = (await platform.shared.all("SELECT category_id, display_code, name FROM categories WHERE active = 1 ORDER BY display_code"))
-     .map((r) => ({ code: String(r.display_code), name: pick(categoryNames.get(String(r.category_id)), String(r.name), locale, fallbacks), ...(includeTranslations ? { translations: Object.fromEntries(categoryNames.get(String(r.category_id)) ?? []) } : {}) }))
-     .filter((category) => categoryBelongsToRegistry(h.def, category.code));
-   const fieldRows = await platform.shared.all("SELECT field_name, locale, label, help_text FROM field_translations WHERE registry_id = ?", [h.def.registryId]);
-   const fieldNames = translationMap(fieldRows, "field_name", "label");
-   const fieldHelpTexts = translationMap(fieldRows.filter((r) => r.help_text != null), "field_name", "help_text");
-   const fieldTranslations = completeTranslations(fieldRows, "field_name", ["label", "help_text"]);
-   const visibleFields = h.def.fields.filter((field) => projectionMetadata ? field.publicationEligible : isCustomer ? field.writableOnCreate || field.writableOnUpdate : true);
-   const fields = visibleFields.map((field) => ({
-     ...(isWorker ? field : { name: field.name, type: field.type, nullable: field.nullable, writableOnCreate: field.writableOnCreate, writableOnUpdate: field.writableOnUpdate, publicationEligible: field.publicationEligible }),
-     label: pick(fieldNames.get(field.name), field.name, locale, fallbacks),
-     helpText: fieldHelpTexts.has(field.name) ? pick(fieldHelpTexts.get(field.name), "", locale, fallbacks) : null,
-     ...(includeTranslations ? { translations: Object.fromEntries(fieldTranslations.get(field.name) ?? []) } : {}),
-   }));
-   const registryNames = translationMap(await platform.shared.all("SELECT registry_id, locale, name FROM registry_translations WHERE registry_id = ?", [h.def.registryId]), "registry_id", "name");
--  const visibleForms = isWorker ? forms : isCustomer ? forms.filter((form) => form.audience === "customer") : [];
-+  const visibleForms = isWorker ? forms : isCustomer ? forms.filter((form) => form.audience === "customer" || form.audience === "both") : [];
-+  const caseForms = visibleForms.filter((form) => form.kind === "case").map(({ kind: _kind, propertySchema: _schema, allowAttachments: _attachments, operationType: _operationType, ...form }) => form);
-+  const operationForms = visibleForms.filter((form) => form.kind === "operation").map(({ kind: _kind, requiresApproval: _approval, fieldSubset: _subset, ...form }) => form);
-   return { status: 200, headers: localizedHeaders(locale), body: {
-     locale, fallbackLocales: [...fallbacks], registryId: h.def.registryId,
-     name: pick(registryNames.get(h.def.registryId), h.def.name, locale, fallbacks), fields, states,
--    initialState: h.def.initialState, transitions: isWorker ? transitions : [], forms: visibleForms, categories,
-+    initialState: h.def.initialState, transitions: isWorker ? transitions : [], caseForms, operationForms, forms: visibleForms, categories,
-   } };
- };
- 
- // ---- worker portal ---------------------------------------------------------
- 
- const getWorkerCases: ApiHandler = async (platform, req) => {
-   const h = platform.registry(req.params.registry!);
-   if (!h) return { status: 404, body: { error: "unknown registry" } };
-   if (req.principal.kind !== "actor" || req.principal.actor.kind !== "worker")
-     return { status: 403, body: { error: "worker authentication required" } };
-   const workerId = req.principal.actor.workerId;
-   const view = req.query.get("view") ?? "authorized";
-   const cases =
-     view === "assigned" ? await assignedCases(h.db, workerId)
-     : view === "unassigned" ? await unassignedOptedInCases(platform.shared, h.db, workerId, h.def.registryId, platform.clock.now())
-     : await authorizedCases(platform.shared, h.db, workerId, h.def.registryId, platform.clock.now());
-   return { status: 200, body: { view, cases: serializeCases(cases) } };
- };
- 
- const getWorkerPending: ApiHandler = async (platform, req) => {
-   const h = platform.registry(req.params.registry!);
-   if (!h) return { status: 404, body: { error: "unknown registry" } };
-   if (req.principal.kind !== "actor" || req.principal.actor.kind !== "worker")
-     return { status: 403, body: { error: "worker authentication required" } };
-   return { status: 200, body: { pending: await pendingToApprove(platform.shared, h.db, req.principal.actor.workerId, h.def.registryId, platform.clock.now()) } };
-diff --git a/src/bootstrap.ts b/src/bootstrap.ts
-index 9c8dc71cbf1635419bf48cdb897e7ae5f80eab4e..e2882b3a683ab99e08995f8caf0065e8017f72b3 100644
---- a/src/bootstrap.ts
-+++ b/src/bootstrap.ts
-@@ -1,54 +1,57 @@
- /**
-  * Compose root — build a fully-migrated, seeded, MULTI-REGISTRY Platform from
-  * declarative config. Each registry gets its OWN database (the production
-  * multi-database model, D-04); the shared database holds master data + config.
-  * Shared by the demos, the HTTP server, and the tests, so there is one wiring.
-  *
-  * Two entry points:
-  *   - buildSamplePlatform: in-memory SQLite, fresh per call — used by tests and
-  *     quick demos. Zero dependencies, no env needed (Env 1 friendly).
-  *   - bootstrapFromEnv: resolves adapters from environment config via the
-  *     factory, so the SAME code runs on in-memory SQLite (Env 1), a local SQL
-  *     Server (Env 2), or Azure SQL (Env 3) with no code change.
-  */
- 
- import type { DbAdapter } from "./db/db.ts";
- import { SqliteAdapter } from "./db/sqlite-adapter.ts";
- import { createAdapter, type DbTarget } from "./db/factory.ts";
- import { loadDbConfig } from "./config/db-config.ts";
- import { migrate } from "./migrations/runner.ts";
- import { m0001 } from "./migrations/0001_shared_schema.ts";
- import { m0003 } from "./migrations/0003_api_forms_rules.ts";
- import { m0005 } from "./migrations/0005_admin_exports.ts";
- import { m0006Shared } from "./migrations/0006_localized_metadata.ts";
-+import { m0007 } from "./migrations/0007_split_forms.ts";
-+import { m0008 } from "./migrations/0008_form_audience_both.ts";
- import { Platform, type Clock } from "./api/platform.ts";
- import { StubIdentityProvider, type IdentityProvider } from "./auth/identity.ts";
- import { MemoryBlobStore, type BlobStore } from "./blob/blob.ts";
- import { applyPlatformConfig, applyRegistryConfig } from "./services/config-apply.ts";
- import { PLATFORM_CONFIG, ALL_REGISTRIES } from "./config/platform-config.ts";
- import { createLogger, type Logger } from "./logging/logger.ts";
-+import { exportRegistryConfig } from "./services/config-promote.ts";
- 
- export function fixedClock(now: string): Clock {
-   return { now: () => now };
+ interface PublishedCaseRecord extends PublishedCaseView {
+   caseKey: bigint;
  }
  
- export interface SamplePlatform {
-   platform: Platform;
-   shared: DbAdapter;
-   /** The Permit registry DB (kept for tests that predate the Grant registry). */
-   db: DbAdapter;
-   dbs: Record<string, DbAdapter>;
+ export interface OperationView {
+   operationId: number;
+   created: string;
+   direction: string;
+   type: string;
+   subtype: string | null;
++  properties: unknown | null;
+   comment: string | null;
+   actorKind: string;
  }
  
- /** @deprecated Prefer the application-wide Logger name. */
- export type BootstrapLogger = Logger;
- 
- export interface RuntimeAdapters {
-   /** Required in production; the development token parser is intentionally fail-closed there. */
-   readonly identity?: IdentityProvider;
-   /** Required in production; attachments must not silently use process memory. */
-   readonly blobs?: BlobStore;
-   readonly environment?: "development" | "test" | "production";
- }
- 
- const defaultBootstrapLogger = createLogger();
-@@ -56,141 +59,145 @@ const defaultBootstrapLogger = createLogger();
- function describeTarget(target: DbTarget): string {
-   if (target.dialect === "sqlite") return target.file ?? ":memory:";
-   const auth = target.auth?.kind ?? "sql";
-   return `${target.server}:${target.port ?? 1433}/${target.database} (auth=${auth})`;
- }
- 
- async function bootstrapStep<T>(logger: BootstrapLogger, label: string, fn: () => Promise<T>): Promise<T> {
-   logger.info(`[bootstrap] ${label}...`);
-   try {
-     const result = await fn();
-     logger.info(`[bootstrap] ${label}: done`);
-     return result;
-   } catch (error) {
-     const message = error instanceof Error ? error.message : String(error);
-     logger.error(`[bootstrap] ${label}: FAILED — ${message}`);
-     throw error;
-   }
- }
- 
- /**
-  * Build a platform on FRESH in-memory SQLite (zero dependencies). Used by tests
-  * and demos; deterministic and isolated per call.
-  */
- export async function buildSamplePlatform(clock: Clock): Promise<SamplePlatform> {
-   const shared = new SqliteAdapter(":memory:");
--  await migrate(shared, [m0001, m0003, m0005, m0006Shared], clock.now());
-+  await migrate(shared, [m0001, m0003, m0005, m0006Shared, m0007, m0008], clock.now());
-   await applyPlatformConfig(shared, PLATFORM_CONFIG, clock.now());
- 
-   const platform = new Platform(shared, new StubIdentityProvider(), clock, new MemoryBlobStore());
-   const dbs: Record<string, DbAdapter> = {};
-   for (const cfg of ALL_REGISTRIES) {
-     const db = new SqliteAdapter(":memory:");
-     await applyRegistryConfig(shared, db, cfg, clock.now());
-     platform.registerRegistry(cfg, db);
-     dbs[cfg.registryId] = db;
-   }
-   await seedMasterData(shared);
- 
-   return { platform, shared, db: dbs.permit!, dbs };
- }
- 
- /**
-  * Build a platform from environment configuration (Envs 1/2/3). Adapters come
-  * from the factory: in-memory SQLite by default, or SQL Server when
-  * DB_DIALECT=sqlserver. A registry maps to its own database (D-04).
-  *
-  * Note: with SQL Server, each registry database must already exist on the
-  * server (CREATE DATABASE is an operational step, not part of migrations).
-  */
- export async function bootstrapFromEnv(
-   clock: Clock,
-   logger: BootstrapLogger = defaultBootstrapLogger,
-   adapters: RuntimeAdapters = {},
- ): Promise<SamplePlatform> {
-   const environment = adapters.environment ?? (process.env.APP_ENV === "production" ? "production" : "development");
-   if (environment === "production" && !adapters.identity) {
-     throw new Error("production bootstrap requires an explicit IdentityProvider");
-   }
-   if (environment === "production" && !adapters.blobs) {
-     throw new Error("production bootstrap requires an explicit BlobStore");
-   }
-   const config = loadDbConfig();
-   logger.info(`[bootstrap] Starting platform with ${config.dialect}`);
- 
-   const sharedTarget = config.sharedTarget();
-   const shared = await bootstrapStep(
-     logger,
-     `Connecting shared database ${describeTarget(sharedTarget)}`,
-     () => createAdapter(sharedTarget),
-   );
-   const applied = await bootstrapStep(
-     logger,
-     "Running shared database migrations",
-     () => migrate(
-       shared,
--      [m0001, m0003, m0005, m0006Shared],
-+      [m0001, m0003, m0005, m0006Shared, m0007, m0008],
-       clock.now(),
-       (message) => logger.info(`[bootstrap] Shared migration: ${message}`),
-     ),
-   );
-   logger.info(`[bootstrap] Shared migrations: ${applied.length > 0 ? `applied ${applied.join(", ")}` : "up to date"}`);
-   await bootstrapStep(
-     logger,
-     "Applying platform configuration",
-     () => applyPlatformConfig(shared, PLATFORM_CONFIG, clock.now()),
-   );
-   const platform = new Platform(
-     shared,
-     adapters.identity ?? new StubIdentityProvider(),
-     clock,
-     adapters.blobs ?? new MemoryBlobStore(),
-   );
-   const dbs: Record<string, DbAdapter> = {};
-   for (const cfg of ALL_REGISTRIES) {
--    const target = config.registryTarget(cfg.database);
-+    // Management changes are stored as versioned config artifacts. On restart,
-+    // apply the latest persisted artifact instead of replacing it with the
-+    // repository seed configuration.
-+    const effectiveConfig = await exportRegistryConfig(shared, cfg.registryId) ?? cfg;
-+    const target = config.registryTarget(effectiveConfig.database);
-     const db = await bootstrapStep(
-       logger,
-       `Connecting registry "${cfg.registryId}" database ${describeTarget(target)}`,
-       () => createAdapter(target),
-     );
-     const result = await bootstrapStep(
-       logger,
-       `Running migrations and applying configuration for registry "${cfg.registryId}"`,
-       () => applyRegistryConfig(
-         shared,
-         db,
--        cfg,
-+        effectiveConfig,
-         clock.now(),
-         (message) => logger.info(`[bootstrap] Registry "${cfg.registryId}" migration: ${message}`),
-       ),
-     );
-     logger.info(
-       `[bootstrap] Registry "${cfg.registryId}": config version ${result.version}; ` +
-       `${result.addedColumns.length} field column(s) added`,
-     );
--    platform.registerRegistry(cfg, db);
-+    platform.registerRegistry(effectiveConfig, db);
-     dbs[cfg.registryId] = db;
-   }
-   if (environment !== "production") {
-     await bootstrapStep(logger, "Checking shared master data", () => seedMasterDataIfEmpty(shared));
-   }
- 
-   logger.info(`[bootstrap] Platform ready with ${ALL_REGISTRIES.length} registries`);
- 
-   return { platform, shared, db: dbs.permit!, dbs };
- }
- 
- /**
-  * Seed master data only if the shared DB has none yet. `migrate` and the
-  * config-apply steps are already idempotent (they track applied migrations and
-  * upsert), but `seedMasterData` uses plain INSERTs, so re-running it against a
-  * PERSISTENT database (on-disk SQLite, or SQL Server across restarts) would hit
-  * duplicate-key errors. A fresh in-memory DB (Env 1) has no workers, so it
-  * seeds; a persistent DB seeds once and is skipped thereafter. Plain SELECT →
-  * dialect-agnostic.
-  */
- async function seedMasterDataIfEmpty(shared: DbAdapter): Promise<void> {
-   const existing = await shared.get("SELECT 1 AS ok FROM workers");
-   if (existing) return;
-   await seedMasterData(shared);
- }
-diff --git a/src/config/registries/grant.ts b/src/config/registries/grant.ts
-index 5a2b3425251fdbd1578cae6fe927c7c975f6ce77..c9f703ad2d4610572f52b4db2240605e47103409 100644
---- a/src/config/registries/grant.ts
-+++ b/src/config/registries/grant.ts
-@@ -19,56 +19,60 @@ export const GRANT_CONFIG: RegistryConfig = {
-   initialState: "submitted",
-   categoryRoots: ["300"],
-   version: 1,
-   fields: [
-     { name: "organisation", labels: { sourceLocale: "fi", values: { fi: "Organisaatio" } }, type: "text", nullable: false, writableOnCreate: true, writableOnUpdate: false, publicationEligible: true, legalBasis: "Grant Act", purpose: "Identify the applicant", sensitivity: "public", retentionPolicy: "case-lifecycle" },
-     { name: "amount_requested", labels: { sourceLocale: "fi", values: { fi: "Haettu määrä" } }, type: "decimal", nullable: false, writableOnCreate: true, writableOnUpdate: false, publicationEligible: true, legalBasis: "Grant Act", purpose: "Assess the application", sensitivity: "public", retentionPolicy: "case-lifecycle" },
-     { name: "purpose", labels: { sourceLocale: "fi", values: { fi: "Käyttötarkoitus" } }, type: "text", nullable: false, writableOnCreate: true, writableOnUpdate: false, publicationEligible: true, legalBasis: "Grant Act", purpose: "Assess statutory purpose", sensitivity: "public", retentionPolicy: "case-lifecycle" },
-     { name: "iban", labels: { sourceLocale: "fi", values: { fi: "IBAN-tilinumero" } }, type: "text", nullable: true, writableOnCreate: false, writableOnUpdate: true, publicationEligible: false, legalBasis: "Grant Act", purpose: "Pay an awarded grant", sensitivity: "restricted", retentionPolicy: "payment-plus-6-years" },
-   ],
-   states: [
-     { id: "submitted", name: "Submitted", labels: { sourceLocale: "fi", values: { fi: "Lähetetty" } }, isOpen: true, isWaitingForCustomer: false },
-     { id: "under_review", name: "Under review", labels: { sourceLocale: "fi", values: { fi: "Käsittelyssä" } }, isOpen: true, isWaitingForCustomer: false },
-     { id: "awaiting_info", name: "Awaiting information", labels: { sourceLocale: "fi", values: { fi: "Odottaa lisätietoja" } }, isOpen: true, isWaitingForCustomer: true },
-     { id: "granted", name: "Granted", labels: { sourceLocale: "fi", values: { fi: "Myönnetty" } }, isOpen: true, isWaitingForCustomer: false },
-     { id: "rejected", name: "Rejected", labels: { sourceLocale: "fi", values: { fi: "Hylätty" } }, isOpen: false, isWaitingForCustomer: false },
-     { id: "paid", name: "Paid", labels: { sourceLocale: "fi", values: { fi: "Maksettu" } }, isOpen: false, isWaitingForCustomer: false },
-   ],
-   transitions: [
-     ["submitted", "under_review"],
-     ["under_review", "awaiting_info"],
-     ["awaiting_info", "under_review"],
-     ["under_review", "granted"],
-     ["under_review", "rejected"],
-     ["granted", "paid"],
-   ],
--  forms: [
-+  caseForms: [
-     {
-       formId: "provide-iban",
--      kind: "case",
-       audience: "customer",
-       title: "Provide payment IBAN",
-+      description: "Enter the bank account used for the grant payment.",
-+      descriptions: { sourceLocale: "fi", values: { fi: "Anna avustuksen maksamiseen käytettävä pankkitili." } },
-       titles: { sourceLocale: "fi", values: { fi: "Anna maksutilin IBAN" } },
-       requiresApproval: false,
-       fieldSubset: ["iban"],
-     },
-+  ],
-+  operationForms: [
-     {
-       formId: "submit-receipt",
--      kind: "operation",
-       audience: "customer",
-       title: "Submit a receipt",
-+      description: "Enter the receipt details and attach the receipt.",
-+      descriptions: { sourceLocale: "fi", values: { fi: "Anna kuitin tiedot ja liitä kuitti." } },
-       titles: { sourceLocale: "fi", values: { fi: "Toimita kuitti" } },
-       operationType: "receipt",
-       allowAttachments: true,
-       propertySchema: {
-         type: "object",
-         properties: { amount: { type: "number" }, note: { type: "string" } },
-         required: ["amount"],
-         additionalProperties: false,
-       },
-     },
-   ],
-   rules: [
-     { ruleId: "notify-on-awaiting", onToState: "awaiting_info", condition: null, actionType: "notify_customer", actionParams: { template: "info_needed" } },
-     { ruleId: "flag-large-grants", onToState: "granted", condition: { field: "amount_requested", notEquals: 0 }, actionType: "create_operation", actionParams: { direction: "internal", type: "audit_flag", comment: "Granted — routed to audit" } },
-   ],
- };
-diff --git a/src/config/registries/permit.ts b/src/config/registries/permit.ts
-index 1b5d9311494d91f3fa6afd19756755a8a01970f3..c65d28ba1eb8fbf60fffa128ddfbc181fcd92b11 100644
---- a/src/config/registries/permit.ts
-+++ b/src/config/registries/permit.ts
-@@ -12,56 +12,60 @@ export const PERMIT_CONFIG: RegistryConfig = {
-   database: "permit",
-   diary: { registryCode: "PERMIT", numberPadding: 5, separator: "/" },
-   initialState: "received",
-   categoryRoots: ["105", "200"],
-   version: 1,
-   fields: [
-     { name: "applicant_name", labels: { sourceLocale: "fi", values: { fi: "Hakijan nimi" } }, type: "text", nullable: false, writableOnCreate: true, writableOnUpdate: false, publicationEligible: true, legalBasis: "Permit Act", purpose: "Identify the applicant", sensitivity: "normal", retentionPolicy: "case-lifecycle" },
-     { name: "permit_kind", labels: { sourceLocale: "fi", values: { fi: "Luvan tyyppi" } }, type: "text", nullable: false, writableOnCreate: true, writableOnUpdate: false, publicationEligible: true, legalBasis: "Permit Act", purpose: "Classify the application", sensitivity: "public", retentionPolicy: "case-lifecycle" },
-     { name: "site_address", labels: { sourceLocale: "fi", values: { fi: "Kohteen osoite" } }, type: "text", nullable: true, writableOnCreate: true, writableOnUpdate: true, publicationEligible: true, legalBasis: "Permit Act", purpose: "Locate the activity", sensitivity: "normal", retentionPolicy: "case-lifecycle" },
-     { name: "fee_paid", labels: { sourceLocale: "fi", values: { fi: "Maksu maksettu" } }, type: "boolean", nullable: false, writableOnCreate: true, writableOnUpdate: true, publicationEligible: false, legalBasis: "Fees Act", purpose: "Track payment", sensitivity: "restricted", retentionPolicy: "case-lifecycle" },
-   ],
-   states: [
-     { id: "received", name: "Received", labels: { sourceLocale: "fi", values: { fi: "Vastaanotettu" } }, isOpen: true, isWaitingForCustomer: false },
-     { id: "in_preparation", name: "In preparation", labels: { sourceLocale: "fi", values: { fi: "Valmistelussa" } }, isOpen: true, isWaitingForCustomer: false },
-     { id: "waiting_customer", name: "Waiting for customer", labels: { sourceLocale: "fi", values: { fi: "Odottaa asiakasta" } }, isOpen: true, isWaitingForCustomer: true },
-     { id: "decided", name: "Decided", labels: { sourceLocale: "fi", values: { fi: "Päätetty" } }, isOpen: true, isWaitingForCustomer: false },
-     { id: "closed", name: "Closed", labels: { sourceLocale: "fi", values: { fi: "Suljettu" } }, isOpen: false, isWaitingForCustomer: false },
-   ],
-   transitions: [
-     ["received", "in_preparation"],
-     ["in_preparation", "waiting_customer"],
-     ["waiting_customer", "in_preparation"],
-     ["in_preparation", "decided"],
-     ["decided", "closed"],
-   ],
--  forms: [
-+  caseForms: [
-     {
-       formId: "update-site-address",
--      kind: "case",
-       audience: "customer",
-       title: "Update site address",
-+      description: "Enter the new address for the permit site.",
-+      descriptions: { sourceLocale: "fi", values: { fi: "Anna lupakohteen uusi osoite." } },
-       titles: { sourceLocale: "fi", values: { fi: "Päivitä kohteen osoite" } },
-       requiresApproval: true,
-       fieldSubset: ["site_address"],
-     },
-+  ],
-+  operationForms: [
-     {
-       formId: "submit-document",
--      kind: "operation",
-       audience: "customer",
-       title: "Submit a supporting document",
-+      description: "Describe and attach the supporting document.",
-+      descriptions: { sourceLocale: "fi", values: { fi: "Kuvaile ja liitä täydentävä asiakirja." } },
-       titles: { sourceLocale: "fi", values: { fi: "Toimita liiteasiakirja" } },
-       operationType: "document",
-       allowAttachments: true,
-       propertySchema: {
-         type: "object",
-         properties: { documentTitle: { type: "string" }, pages: { type: "integer" } },
-         required: ["documentTitle"],
-         additionalProperties: false,
-       },
-     },
-   ],
-   rules: [
-     { ruleId: "notify-on-waiting", onToState: "waiting_customer", condition: null, actionType: "notify_customer", actionParams: { template: "action_required" } },
-     { ruleId: "autoclose-paid-decisions", onToState: "decided", condition: { field: "fee_paid", equals: true }, actionType: "set_state", actionParams: { toState: "closed" } },
-   ],
- };
-diff --git a/src/config/registry-config.ts b/src/config/registry-config.ts
-index e10a84abd7296f334a02b5dcd29901cd03b8131d..b9da938883a3edb34b0f65288b72781bf4b63997 100644
---- a/src/config/registry-config.ts
-+++ b/src/config/registry-config.ts
-@@ -14,75 +14,87 @@ import type { RegistryFieldDef, DiaryFormat } from "./registry-catalog.ts";
- import type { ObjectSchema } from "../domain/json-schema.ts";
- import type { Condition } from "../domain/rule-types.ts";
- 
- export interface CategoryDef {
-   readonly code: string; // e.g. "105.04.03"
-   readonly name: string;
-   readonly labels?: LocalizedText;
- }
- 
- export interface LocalizedText {
-   readonly sourceLocale: string;
-   readonly values: Readonly<Record<string, string>>;
- }
- 
- export interface StateDef {
-   readonly id: string;
-   readonly name: string;
-   readonly labels?: LocalizedText;
-   readonly descriptions?: LocalizedText;
-   readonly isOpen: boolean;
-   readonly isWaitingForCustomer: boolean;
- }
- 
- export type TransitionDef = readonly [from: string, to: string];
- 
--export interface FormConfig {
-+export interface FormBaseConfig {
-   readonly formId: string;
--  readonly kind: "case" | "operation";
--  readonly audience: "worker" | "customer";
-+  readonly audience: "worker" | "customer" | "both";
-   readonly title: string;
-+  /** Form-filling instructions shown before the fields. */
-+  readonly description: string;
-   readonly titles?: LocalizedText;
-   readonly descriptions?: LocalizedText;
-+}
-+
-+export interface CaseFormConfig extends FormBaseConfig {
-   readonly requiresApproval?: boolean;
-   readonly fieldSubset?: readonly string[];
-+}
-+
-+export interface OperationFormConfig extends FormBaseConfig {
-   readonly propertySchema?: ObjectSchema;
-   readonly allowAttachments?: boolean;
-   readonly operationType?: string;
- }
- 
-+export type FormConfig = (CaseFormConfig & { readonly kind: "case" }) | (OperationFormConfig & { readonly kind: "operation" });
-+
- export interface RuleConfig {
-   readonly ruleId: string;
-   readonly onToState?: string | null;
-   readonly condition?: Condition;
-   readonly actionType: string;
-   readonly actionParams?: Record<string, unknown>;
-   readonly ordering?: number;
- }
- 
- export interface RegistryConfig {
-   readonly registryId: string;
-   readonly name: string;
-   readonly labels?: LocalizedText;
-   readonly database: string;
-   readonly diary: DiaryFormat;
-   readonly initialState: string;
-   readonly categoryRoots: readonly string[];
-   readonly fields: readonly RegistryFieldDef[];
-   readonly states: readonly StateDef[];
-   readonly transitions: readonly TransitionDef[];
-+  readonly caseForms?: readonly CaseFormConfig[];
-+  readonly operationForms?: readonly OperationFormConfig[];
-+  /** @deprecated Accepted when importing older config artifacts. */
-   readonly forms?: readonly FormConfig[];
-   readonly rules?: readonly RuleConfig[];
-   /** Config schema version, bumped as the definition evolves (promotion aid). */
-   readonly version?: number;
- }
- 
- /** Platform-wide configuration shared by all registries (the category registry). */
- export interface PlatformConfig {
-   readonly categories: readonly CategoryDef[];
-   readonly locales?: LocaleConfig;
- }
- 
- export interface LocaleConfig {
-   readonly supported: readonly string[];
-   readonly default: string;
- }
-diff --git a/src/config/validation.ts b/src/config/validation.ts
-index cf856d4033c713763bc1dc7cda2c8e7498e6a1be..77c62ead4505c8b512bb62fc4a2da1defa64b2f2 100644
---- a/src/config/validation.ts
-+++ b/src/config/validation.ts
-@@ -79,46 +79,50 @@ export function validateRegistryConfig(config: RegistryConfig): void {
-   if (!config.initialState || !config.states.some((s) => s.id === config.initialState)) {
-     throw new Error(`registry ${config.registryId} has invalid initialState`);
-   }
-   if (config.categoryRoots.length === 0) throw new Error(`registry ${config.registryId} requires categoryRoots`);
-   for (const root of config.categoryRoots) normalizePath(root);
- 
-   const names = new Set<string>();
-   const fieldDefs = new Map<string, RegistryFieldDef>();
-   for (const field of config.fields) {
-     assertGovernedField(field);
-     if (names.has(field.name)) throw new Error(`duplicate field ${field.name}`);
-     names.add(field.name);
-     fieldDefs.set(field.name, field);
-   }
- 
-   const states = new Set(config.states.map((s) => s.id));
-   if (states.size !== config.states.length) throw new Error("duplicate state id");
-   for (const state of config.states) {
-     if (state.labels) validateLocalizedText(state.labels, `state ${state.id} label`);
-     if (state.descriptions) validateLocalizedText(state.descriptions, `state ${state.id} description`);
-   }
-   for (const [from, to] of config.transitions) {
-     if (!states.has(from) || !states.has(to)) throw new Error(`transition ${from} -> ${to} references unknown state`);
-   }
-   const formIds = new Set<string>();
--  for (const form of config.forms ?? []) {
-+  const forms = [...(config.caseForms ?? []), ...(config.operationForms ?? []), ...(config.forms ?? [])];
-+  for (const form of forms) {
-     if (!form.formId.trim() || formIds.has(form.formId)) throw new Error(`invalid or duplicate form id ${form.formId}`);
-     formIds.add(form.formId);
-+    if (!form.title.trim()) throw new Error(`form ${form.formId} requires a title`);
-+    if ("description" in form && !form.description.trim()) throw new Error(`form ${form.formId} requires a description`);
-+    if (!new Set(["worker", "customer", "both"]).has(form.audience)) throw new Error(`form ${form.formId} has invalid audience`);
-     if (form.titles) validateLocalizedText(form.titles, `form ${form.formId} title`);
-     if (form.descriptions) validateLocalizedText(form.descriptions, `form ${form.formId} description`);
--    if (form.fieldSubset) {
-+    if ("fieldSubset" in form && form.fieldSubset) {
-       for (const name of form.fieldSubset) if (!names.has(name)) throw new Error(`form ${form.formId} references unknown field ${name}`);
-     }
-   }
-   const ruleIds = new Set<string>();
-   for (const rule of config.rules ?? []) {
-     if (ruleIds.has(rule.ruleId)) throw new Error(`duplicate rule id ${rule.ruleId}`);
-     ruleIds.add(rule.ruleId);
-     assertRule(rule, fieldDefs, states, config.categoryRoots);
-   }
- }
- 
- export function categoryBelongsToRegistry(config: Pick<RegistryConfig, "categoryRoots">, category: string): boolean {
-   normalizePath(category);
-   return config.categoryRoots.some((root) => isWithin(category, root));
- }
-diff --git a/src/migrations/0003_api_forms_rules.ts b/src/migrations/0003_api_forms_rules.ts
-index 6ad4eda7b0e705a2a156bf63c05dd71bfdc8c954..26f9c40bd87e995e640f2f1ca5f9715aebda8031 100644
---- a/src/migrations/0003_api_forms_rules.ts
-+++ b/src/migrations/0003_api_forms_rules.ts
-@@ -19,51 +19,51 @@ export const m0003: Migration = {
-   async up(tx, _d) {
-     // API tokens: scope = allowed methods × category subtree × resource.
-     // token_hash stores a hash, never the raw token (§14). methods/resources are
-     // comma-separated for simplicity here; category_scope is a display code whose
-     // normalized path drives prefix containment (same logic as worker grants).
-     await tx.run(`
-       CREATE TABLE api_tokens (
-         token_id       TEXT PRIMARY KEY,
-         token_hash     TEXT NOT NULL,
-         description    TEXT NULL,
-         registry_id    TEXT NOT NULL,
-         methods        TEXT NOT NULL,
-         resources      TEXT NOT NULL,
-         category_scope TEXT NULL,
-         published_only INTEGER NOT NULL DEFAULT 1,
-         active         INTEGER NOT NULL DEFAULT 1,
-         created        TEXT NOT NULL
-       )
-     `);
- 
-     await tx.run(`
-       CREATE TABLE form_definitions (
-         form_id          TEXT PRIMARY KEY,
-         registry_id      TEXT NOT NULL,
-         kind             TEXT NOT NULL CHECK (kind IN ('case','operation')),
--        audience         TEXT NOT NULL CHECK (audience IN ('worker','customer')),
-+        audience         TEXT NOT NULL CHECK (audience IN ('worker','customer','both')),
-         title            TEXT NOT NULL,
-         requires_approval INTEGER NOT NULL DEFAULT 0,
-         field_subset     TEXT NULL,
-         property_schema  TEXT NULL,
-         allow_attachments INTEGER NOT NULL DEFAULT 0,
-         operation_type   TEXT NULL,
-         active           INTEGER NOT NULL DEFAULT 1
-       )
-     `);
- 
-     await tx.run(`
-       CREATE TABLE rules (
-         rule_id      TEXT PRIMARY KEY,
-         registry_id  TEXT NOT NULL,
-         [trigger]    TEXT NOT NULL DEFAULT 'state_change',
-         on_to_state  TEXT NULL,
-         condition    TEXT NULL,
-         action_type  TEXT NOT NULL,
-         action_params TEXT NULL,
-         ordering     INTEGER NOT NULL DEFAULT 0,
-         active       INTEGER NOT NULL DEFAULT 1
-       )
-     `);
-     await tx.run("CREATE INDEX ix_rules_registry ON rules(registry_id, active)");
-   },
-diff --git a/src/migrations/0007_split_forms.ts b/src/migrations/0007_split_forms.ts
-new file mode 100644
-index 0000000000000000000000000000000000000000..b6d29d48e7585c6c9d5466956bc77b8bc7672e65
---- /dev/null
-+++ b/src/migrations/0007_split_forms.ts
-@@ -0,0 +1,25 @@
-+import type { Migration } from "./runner.ts";
-+
-+/** Persist common form data once and type-specific data in dedicated tables. */
-+export const m0007: Migration = {
-+  id: "0007",
-+  name: "split_case_and_operation_forms",
-+  async up(tx, d) {
-+    await tx.run(`ALTER TABLE form_definitions ADD description ${d.name === "sqlserver" ? "NVARCHAR(MAX)" : "TEXT"} NULL`);
-+    await tx.run(`CREATE TABLE case_form_definitions (
-+      form_id TEXT PRIMARY KEY REFERENCES form_definitions(form_id),
-+      requires_approval INTEGER NOT NULL DEFAULT 0,
-+      field_subset TEXT NULL
-+    )`);
-+    await tx.run(`CREATE TABLE operation_form_definitions (
-+      form_id TEXT PRIMARY KEY REFERENCES form_definitions(form_id),
-+      allow_attachments INTEGER NOT NULL DEFAULT 0,
-+      operation_type TEXT NULL,
-+      property_schema TEXT NULL
-+    )`);
-+    await tx.run(`INSERT INTO case_form_definitions (form_id, requires_approval, field_subset)
-+      SELECT form_id, requires_approval, field_subset FROM form_definitions WHERE kind = 'case'`);
-+    await tx.run(`INSERT INTO operation_form_definitions (form_id, allow_attachments, operation_type, property_schema)
-+      SELECT form_id, allow_attachments, operation_type, property_schema FROM form_definitions WHERE kind = 'operation'`);
-+  },
-+};
-diff --git a/src/migrations/0008_form_audience_both.ts b/src/migrations/0008_form_audience_both.ts
-new file mode 100644
-index 0000000000000000000000000000000000000000..988fca7ec0ac005ad21a2576dcb30fd668a42360
---- /dev/null
-+++ b/src/migrations/0008_form_audience_both.ts
-@@ -0,0 +1,36 @@
-+import type { Migration } from "./runner.ts";
-+
-+/** Allow a single form definition to be offered to customers and workers. */
-+export const m0008: Migration = {
-+  id: "0008",
-+  name: "form_audience_both",
-+  async up(tx, d) {
-+    if (d.name === "sqlserver") {
-+      await tx.run(`DECLARE @constraint NVARCHAR(128);
-+        SELECT TOP 1 @constraint = cc.name
-+        FROM sys.check_constraints cc
-+        JOIN sys.columns c ON c.object_id = cc.parent_object_id AND c.column_id = cc.parent_column_id
-+        WHERE cc.parent_object_id = OBJECT_ID('form_definitions') AND c.name = 'audience';
-+        IF @constraint IS NOT NULL EXEC('ALTER TABLE form_definitions DROP CONSTRAINT [' + @constraint + ']');
-+        ALTER TABLE form_definitions ADD CONSTRAINT CK_form_definitions_audience
-+          CHECK (audience IN ('worker','customer','both'));`);
-+      return;
-+    }
-+
-+    await tx.run("PRAGMA defer_foreign_keys = ON");
-+    await tx.run(`CREATE TABLE form_definitions_new (
-+      form_id TEXT PRIMARY KEY, registry_id TEXT NOT NULL,
-+      kind TEXT NOT NULL CHECK (kind IN ('case','operation')),
-+      audience TEXT NOT NULL CHECK (audience IN ('worker','customer','both')),
-+      title TEXT NOT NULL, requires_approval INTEGER NOT NULL DEFAULT 0,
-+      field_subset TEXT NULL, property_schema TEXT NULL,
-+      allow_attachments INTEGER NOT NULL DEFAULT 0, operation_type TEXT NULL,
-+      active INTEGER NOT NULL DEFAULT 1, description TEXT NULL)`);
-+    await tx.run(`INSERT INTO form_definitions_new
-+      SELECT form_id, registry_id, kind, audience, title, requires_approval, field_subset,
-+             property_schema, allow_attachments, operation_type, active, description
-+      FROM form_definitions`);
-+    await tx.run("DROP TABLE form_definitions");
-+    await tx.run("ALTER TABLE form_definitions_new RENAME TO form_definitions");
-+  },
-+};
-diff --git a/src/services/admin.ts b/src/services/admin.ts
-index 93842eadd394988ef0d2890d3137b208d8d45143..146957ca454d6ee10b5c567598c64f032ce0dd57 100644
---- a/src/services/admin.ts
-+++ b/src/services/admin.ts
-@@ -1,100 +1,127 @@
- /**
-  * Management-portal backend (Architecture §5.8). The administrative operations
-  * that shape a registry WITHOUT a software release: edit fields, states,
-  * transitions, categories, forms, rules, worker authorizations, and API tokens.
-  *
-  * Config edits are expressed as mutations of the registry's stored config
-  * artifact, then re-applied via applyRegistryConfig — so a management change and
-  * a config-as-code change go through exactly the same forward-only path and are
-  * versioned identically (Decision D-05). This is what makes "change without a
-  * release" safe rather than ad-hoc.
-  */
- 
- import type { Platform } from "../api/platform.ts";
- import type { Principal } from "../api/authz.ts";
- import { dialectFor } from "../db/dialect.ts";
--import type { RegistryConfig, StateDef, FormConfig, RuleConfig } from "../config/registry-config.ts";
-+import type { RegistryConfig, StateDef, FormConfig, CaseFormConfig, OperationFormConfig, RuleConfig } from "../config/registry-config.ts";
- import type { RegistryFieldDef } from "../config/registry-catalog.ts";
- import { applyRegistryConfig, applyPlatformConfig } from "./config-apply.ts";
- import { exportRegistryConfig } from "./config-promote.ts";
- import { mintApiToken, type HttpMethod } from "../api/tokens.ts";
- import { categoryBelongsToRegistry } from "../config/validation.ts";
- 
- /** True iff the principal is an authenticated admin worker. */
- export async function isAdmin(platform: Platform, principal: Principal): Promise<boolean> {
-   if (principal.kind !== "actor" || principal.actor.kind !== "worker") return false;
-   const row = await platform.shared.get("SELECT is_admin FROM workers WHERE worker_id = ? AND active = 1", [principal.actor.workerId]);
-   return !!row && Number(row.is_admin) === 1;
- }
- 
- /**
-  * Load the current config artifact, apply a mutation, bump the version, and
-  * re-apply. Returns the new version. This is the spine of every config edit.
-  */
- export async function mutateRegistryConfig(
-   platform: Platform,
-   registryId: string,
-   mutate: (cfg: RegistryConfig) => RegistryConfig,
-   now: string,
- ): Promise<{ version: number; addedColumns: string[] }> {
--  const current = await exportRegistryConfig(platform.shared, registryId);
--  if (!current) throw new Error(`unknown registry ${registryId}`);
-+  const stored = await exportRegistryConfig(platform.shared, registryId);
-+  if (!stored) throw new Error(`unknown registry ${registryId}`);
-+  // Convert older combined artifacts before editing them. Leaving a legacy
-+  // `forms` property present would make subsequent split-list edits invisible
-+  // when the artifact is applied again.
-+  const legacyForms = stored.forms ?? [];
-+  const { forms: _legacy, ...withoutLegacyForms } = stored;
-+  const current: RegistryConfig = {
-+    ...withoutLegacyForms,
-+    caseForms: stored.caseForms ?? legacyForms.filter((form) => form.kind === "case").map(({ kind: _kind, ...form }) => form),
-+    operationForms: stored.operationForms ?? legacyForms.filter((form) => form.kind === "operation").map(({ kind: _kind, ...form }) => form),
-+  };
-   const next = mutate(current);
-   const bumped: RegistryConfig = { ...next, version: (current.version ?? 1) + 1 };
-   const h = platform.registry(registryId);
-   if (!h) throw new Error(`registry ${registryId} not registered`);
-   const result = await applyRegistryConfig(platform.shared, h.db, bumped, now);
-   // Refresh the live registry definition so subsequent requests see the change
-   // (e.g. a newly added field is immediately usable). RegistryConfig is
-   // structurally a RegistryDefinition.
-   platform.registerRegistry(bumped, h.db);
-   return result;
- }
- 
- export async function addField(platform: Platform, registryId: string, field: RegistryFieldDef, now: string) {
-   return mutateRegistryConfig(platform, registryId, (cfg) => {
-     if (cfg.fields.some((f) => f.name === field.name)) throw new Error(`field ${field.name} already exists`);
-     return { ...cfg, fields: [...cfg.fields, field] };
-   }, now);
- }
- 
- export async function addState(platform: Platform, registryId: string, state: StateDef, now: string) {
-   return mutateRegistryConfig(platform, registryId, (cfg) => ({ ...cfg, states: [...cfg.states, state] }), now);
- }
- 
- export async function addTransition(platform: Platform, registryId: string, from: string, to: string, now: string) {
-   return mutateRegistryConfig(platform, registryId, (cfg) => {
-     const known = new Set(cfg.states.map((s) => s.id));
-     if (!known.has(from) || !known.has(to)) throw new Error("transition references unknown state");
-     if (cfg.transitions.some(([f, t]) => f === from && t === to)) return cfg;
-     return { ...cfg, transitions: [...cfg.transitions, [from, to]] };
-   }, now);
- }
- 
- export async function addForm(platform: Platform, registryId: string, form: FormConfig, now: string) {
--  return mutateRegistryConfig(platform, registryId, (cfg) => ({ ...cfg, forms: [...(cfg.forms ?? []).filter((f) => f.formId !== form.formId), form] }), now);
-+  const compatible = { ...form, description: form.description || form.title };
-+  return form.kind === "case" ? addCaseForm(platform, registryId, compatible, now) : addOperationForm(platform, registryId, compatible, now);
-+}
-+
-+export async function addCaseForm(platform: Platform, registryId: string, form: CaseFormConfig, now: string) {
-+  return mutateRegistryConfig(platform, registryId, (cfg) => ({
-+    ...cfg,
-+    caseForms: [...(cfg.caseForms ?? []).filter((f) => f.formId !== form.formId), form],
-+    operationForms: (cfg.operationForms ?? []).filter((f) => f.formId !== form.formId),
-+  }), now);
-+}
-+
-+export async function addOperationForm(platform: Platform, registryId: string, form: OperationFormConfig, now: string) {
-+  return mutateRegistryConfig(platform, registryId, (cfg) => ({
-+    ...cfg,
-+    caseForms: (cfg.caseForms ?? []).filter((f) => f.formId !== form.formId),
-+    operationForms: [...(cfg.operationForms ?? []).filter((f) => f.formId !== form.formId), form],
-+  }), now);
- }
- 
- export async function addRule(platform: Platform, registryId: string, rule: RuleConfig, now: string) {
-   return mutateRegistryConfig(platform, registryId, (cfg) => ({ ...cfg, rules: [...(cfg.rules ?? []).filter((r) => r.ruleId !== rule.ruleId), rule] }), now);
- }
- 
- export async function addCategory(platform: Platform, code: string, name: string, now: string): Promise<void> {
-   await applyPlatformConfig(platform.shared, { categories: [{ code, name }] }, now);
- }
- 
- export async function grantAuthorization(
-   platform: Platform,
-   input: { workerId: string; registryId: string; categoryId: string; canRead?: boolean; canWrite?: boolean; canTransition?: boolean; canApprove?: boolean; optedIn?: boolean; validFrom?: string; validUntil?: string },
- ): Promise<void> {
-   const registry = platform.registry(input.registryId);
-   if (!registry) throw new Error(`unknown registry ${input.registryId}`);
-   if (!categoryBelongsToRegistry(registry.def, input.categoryId)) throw new Error("authorization category is outside registry scope");
-   const worker = await platform.shared.get("SELECT 1 AS ok FROM workers WHERE worker_id = ? AND active = 1", [input.workerId]);
-   if (!worker) throw new Error(`unknown or inactive worker ${input.workerId}`);
-   const category = await platform.shared.get("SELECT 1 AS ok FROM categories WHERE category_id = ? AND active = 1", [input.categoryId]);
-   if (!category) throw new Error(`unknown or inactive category ${input.categoryId}`);
-   const validFrom = input.validFrom === undefined ? undefined : Date.parse(input.validFrom);
-   const validUntil = input.validUntil === undefined ? undefined : Date.parse(input.validUntil);
-   if (validFrom !== undefined && Number.isNaN(validFrom)) throw new Error("invalid validFrom");
-   if (validUntil !== undefined && Number.isNaN(validUntil)) throw new Error("invalid validUntil");
-diff --git a/src/services/config-apply.ts b/src/services/config-apply.ts
-index bb08f1a0bbfe4997b8fe45228b8f76247884d2ff..8e8f92022136ed98ccccc0c0954800fc986d3aad 100644
---- a/src/services/config-apply.ts
-+++ b/src/services/config-apply.ts
-@@ -2,247 +2,263 @@
-  * Config-as-code applier (Architecture §5.12, Decision D-05).
-  *
-  * Applies a declarative RegistryConfig to a registry database + the shared
-  * config database, idempotently and FORWARD-ONLY:
-  *   - creates the spine on first apply; on later applies, ADDs any missing
-  *     statutory field columns (a config-driven schema migration — "add a field"
-  *     is deliberately a migration, D-03) but never drops.
-  *   - upserts catalog, states, transitions, forms, rules to match the config.
-  *   - records the applied version in config_versions.
-  *
-  * Applying the SAME config to dev, then test, then prod yields identical
-  * behavior — this function IS the promotion mechanism (services/config-promote).
-  *
-  * All upserts, schema introspection, and ADD COLUMN go through the Dialect
-  * builders (obtained from the adapter's dialect), so this runs on SQLite and
-  * SQL Server without branching.
-  */
- 
- import type { DbAdapter } from "../db/db.ts";
- import { dialectFor } from "../db/dialect.ts";
- import { migrate } from "../migrations/runner.ts";
- import type { MigrationProgress } from "../migrations/runner.ts";
- import { registrySpineMigration } from "../migrations/0002_registry_spine.ts";
- import { m0004 } from "../migrations/0004_registry_forms.ts";
- import { m0006Registry, m0006Shared } from "../migrations/0006_localized_metadata.ts";
-+import { m0007 } from "../migrations/0007_split_forms.ts";
-+import { m0008 } from "../migrations/0008_form_audience_both.ts";
- import type { RegistryConfig, PlatformConfig } from "../config/registry-config.ts";
- import { normalizePath, levelOf } from "../domain/categories.ts";
- import { validateRegistryConfig } from "../config/validation.ts";
- import { DEFAULT_LOCALE_CONFIG, normalizeLocale, resolveLocalizedText, validateLocaleConfig, validateLocalizedText } from "../config/localization.ts";
- 
- /** Apply platform-wide config (the shared category registry). Idempotent. */
- export async function applyPlatformConfig(shared: DbAdapter, config: PlatformConfig, now: string): Promise<void> {
-   validateLocaleConfig(config.locales ?? DEFAULT_LOCALE_CONFIG);
-   await migrate(shared, [m0006Shared], now);
-   const d = dialectFor(shared.dialect);
-   const sql = d.upsert({
-     table: "categories",
-     insertColumns: ["category_id", "display_code", "path", "parent_id", "level", "name"],
-     conflictColumns: ["category_id"],
-     updateColumns: ["display_code", "path", "level", "name"],
-   });
-   await shared.transaction(async (tx) => {
-     for (const cat of config.categories) {
-       if (cat.labels) validateLocalizedText(cat.labels, `category ${cat.code} label`);
-       await tx.run(sql, [cat.code, cat.code, normalizePath(cat.code), null, levelOf(cat.code), cat.name]);
-       for (const [locale, name] of Object.entries(cat.labels?.values ?? { fi: cat.name })) {
-         await tx.run(d.upsert({ table: "category_translations", insertColumns: ["category_id", "locale", "name"], conflictColumns: ["category_id", "locale"], updateColumns: ["name"] }), [cat.code, normalizeLocale(locale), name]);
-       }
-     }
-   });
- }
- 
- /**
-  * Apply a registry config to its own database (regDb) + shared config (shared).
-  * `regDb` must be the registry's database (may be fresh — the spine is created
-  * on first apply). Returns the applied version.
-  */
- export async function applyRegistryConfig(
-   shared: DbAdapter,
-   regDb: DbAdapter,
-   config: RegistryConfig,
-   now: string,
-   migrationProgress?: MigrationProgress,
- ): Promise<{ version: number; addedColumns: string[] }> {
-   validateRegistryConfig(config);
-+  await migrate(shared, [m0007, m0008], now, migrationProgress);
-   const ds = dialectFor(shared.dialect);
-   const dr = dialectFor(regDb.dialect);
- 
-   // 1) Ensure the spine exists (fresh registry) — creates cases/operations/etc.
-   //    Using the runner keeps it forward-only and recorded per-registry DB.
-   const casesExists = await tableExists(regDb, "cases");
-   if (!casesExists) {
-     await migrate(regDb, [registrySpineMigration(config), m0004, m0006Registry], now, migrationProgress);
-   } else {
-     await migrate(regDb, [registrySpineMigration(config), m0004, m0006Registry], now, migrationProgress);
-   }
- 
-   // 2) Forward-only field evolution: add any config field missing as a column.
-   const addedColumns = await addMissingFieldColumns(regDb, config);
- 
-   // Form IDs are global keys in the shared database. Never let an upsert or a
-   // replacement apply move a definition (and its translations) between
-   // registries merely because two independently authored configs reuse an ID.
--  for (const form of config.forms ?? []) {
-+  const hasSplitForms = config.caseForms !== undefined || config.operationForms !== undefined;
-+  const forms = hasSplitForms ? [
-+    ...(config.caseForms ?? []).map((form) => ({ ...form, kind: "case" as const })),
-+    ...(config.operationForms ?? []).map((form) => ({ ...form, kind: "operation" as const })),
-+  ] : [...(config.forms ?? [])];
-+  for (const form of forms) {
-     const owner = await shared.get("SELECT registry_id FROM form_definitions WHERE form_id = ?", [form.formId]);
-     if (owner && String(owner.registry_id) !== config.registryId) {
-       throw new Error(`form ${form.formId} belongs to registry ${String(owner.registry_id)}`);
-     }
-   }
- 
-   // 3) Upsert catalog (shared).
-   await shared.run(
-     ds.upsert({
-       table: "registry_catalog",
-       insertColumns: ["registry_id", "name", "database_key", "registry_code", "number_padding", "separator"],
-       conflictColumns: ["registry_id"],
-       updateColumns: ["name", "database_key", "registry_code", "number_padding", "separator"],
-     }),
-     [config.registryId, config.name, config.database, config.diary.registryCode, config.diary.numberPadding, config.diary.separator],
-   );
-   for (const [locale, name] of Object.entries(config.labels?.values ?? { fi: config.name })) {
-     await shared.run(ds.upsert({ table: "registry_translations", insertColumns: ["registry_id", "locale", "name"], conflictColumns: ["registry_id", "locale"], updateColumns: ["name"] }), [config.registryId, normalizeLocale(locale), name]);
-   }
- 
-   // 4) States + transitions (registry DB). Replace transitions wholesale to
-   //    match config exactly; upsert states so history references stay valid.
-   const stateSql = dr.upsert({
-     table: "states",
-     insertColumns: ["id", "name", "description", "is_open", "is_waiting_for_customer"],
-     conflictColumns: ["id"],
-     updateColumns: ["name", "is_open", "is_waiting_for_customer"],
-   });
-   await regDb.transaction(async (tx) => {
-     for (const s of config.states) {
-       await tx.run(stateSql, [s.id, s.name, null, s.isOpen ? 1 : 0, s.isWaitingForCustomer ? 1 : 0]);
-       const locales = new Set([...Object.keys(s.labels?.values ?? { fi: s.name }), ...Object.keys(s.descriptions?.values ?? {})]);
-       for (const locale of locales) {
-         const name = resolveLocalizedText(s.labels, s.name, locale).value;
-         const description = s.descriptions ? resolveLocalizedText(s.descriptions, "", locale).value : null;
-         await tx.run(dr.upsert({ table: "state_translations", insertColumns: ["state_id", "locale", "name", "description"], conflictColumns: ["state_id", "locale"], updateColumns: ["name", "description"] }), [s.id, normalizeLocale(locale), name, description]);
-       }
-     }
-     await tx.run("DELETE FROM state_transitions");
-     for (const [from, to] of config.transitions) {
-       await tx.run("INSERT INTO state_transitions (from_state, to_state) VALUES (?, ?)", [from, to]);
-     }
-   });
- 
-   // 5) Forms + rules (shared config), keyed by id. Upsert configured forms so
-   //    multilingual child rows survive a reapply, then remove only stale forms.
-   //    Translation rows reference forms in multilingual deployments, so stale
-   //    dependants must be removed before their parent definitions. The table is
-   //    optional for compatibility with databases predating multilingual support.
-   const hasFormTranslations = await tableExists(shared, "form_translations");
--  const forms = config.forms ?? [];
-   const retainedFormIds = forms.map((form) => form.formId);
-   const retainedClause = retainedFormIds.length
-     ? ` AND form_id NOT IN (${retainedFormIds.map(() => "?").join(", ")})`
-     : "";
-   const staleFormParams = [config.registryId, ...retainedFormIds];
-   const formSql = ds.upsert({
-     table: "form_definitions",
--    insertColumns: ["form_id", "registry_id", "kind", "audience", "title", "requires_approval", "field_subset", "property_schema", "allow_attachments", "operation_type"],
-+    insertColumns: ["form_id", "registry_id", "kind", "audience", "title", "description", "requires_approval", "field_subset", "property_schema", "allow_attachments", "operation_type"],
-     conflictColumns: ["form_id"],
--    updateColumns: ["registry_id", "kind", "audience", "title", "requires_approval", "field_subset", "property_schema", "allow_attachments", "operation_type"],
-+    updateColumns: ["registry_id", "kind", "audience", "title", "description", "requires_approval", "field_subset", "property_schema", "allow_attachments", "operation_type"],
-   });
-   await shared.transaction(async (tx) => {
-     for (const f of forms) {
-       await tx.run(
-         formSql,
-         [
--          f.formId, config.registryId, f.kind, f.audience, f.title,
--          f.requiresApproval ? 1 : 0,
--          f.fieldSubset ? JSON.stringify(f.fieldSubset) : null,
--          f.propertySchema ? JSON.stringify(f.propertySchema) : null,
--          f.allowAttachments ? 1 : 0,
--          f.operationType ?? null,
-+          f.formId, config.registryId, f.kind, f.audience, f.title, f.description || f.title,
-+          f.kind === "case" && f.requiresApproval ? 1 : 0,
-+          f.kind === "case" && f.fieldSubset ? JSON.stringify(f.fieldSubset) : null,
-+          f.kind === "operation" && f.propertySchema ? JSON.stringify(f.propertySchema) : null,
-+          f.kind === "operation" && f.allowAttachments ? 1 : 0,
-+          f.kind === "operation" ? f.operationType ?? null : null,
-         ],
-       );
-+      if (f.kind === "case") {
-+        await tx.run(ds.upsert({ table: "case_form_definitions", insertColumns: ["form_id", "requires_approval", "field_subset"], conflictColumns: ["form_id"], updateColumns: ["requires_approval", "field_subset"] }), [f.formId, f.requiresApproval ? 1 : 0, f.fieldSubset ? JSON.stringify(f.fieldSubset) : null]);
-+        await tx.run("DELETE FROM operation_form_definitions WHERE form_id = ?", [f.formId]);
-+      } else {
-+        await tx.run(ds.upsert({ table: "operation_form_definitions", insertColumns: ["form_id", "allow_attachments", "operation_type", "property_schema"], conflictColumns: ["form_id"], updateColumns: ["allow_attachments", "operation_type", "property_schema"] }), [f.formId, f.allowAttachments ? 1 : 0, f.operationType ?? null, f.propertySchema ? JSON.stringify(f.propertySchema) : null]);
-+        await tx.run("DELETE FROM case_form_definitions WHERE form_id = ?", [f.formId]);
-+      }
-       if (hasFormTranslations) {
-         const translationSql = ds.upsert({
-           table: "form_translations",
-           insertColumns: ["form_id", "locale", "title", "description"],
-           conflictColumns: ["form_id", "locale"],
-           updateColumns: ["title", "description"],
-         });
-         const locales = new Set([...Object.keys(f.titles?.values ?? { fi: f.title }), ...Object.keys(f.descriptions?.values ?? {})]);
-         for (const locale of locales) {
-           const title = resolveLocalizedText(f.titles, f.title, locale).value;
-           const description = f.descriptions ? resolveLocalizedText(f.descriptions, "", locale).value : null;
-           await tx.run(translationSql, [f.formId, normalizeLocale(locale), title, description]);
-         }
-       }
-     }
-     if (hasFormTranslations) {
-       await tx.run(
-         `DELETE FROM form_translations
-          WHERE form_id IN (
-            SELECT form_id FROM form_definitions WHERE registry_id = ?${retainedClause}
-          )`,
-         staleFormParams,
-       );
-     }
-+    await tx.run(`DELETE FROM case_form_definitions WHERE form_id IN (SELECT form_id FROM form_definitions WHERE registry_id = ?${retainedClause})`, staleFormParams);
-+    await tx.run(`DELETE FROM operation_form_definitions WHERE form_id IN (SELECT form_id FROM form_definitions WHERE registry_id = ?${retainedClause})`, staleFormParams);
-     await tx.run(`DELETE FROM form_definitions WHERE registry_id = ?${retainedClause}`, staleFormParams);
-     await tx.run("DELETE FROM rules WHERE registry_id = ?", [config.registryId]);
-     for (const r of config.rules ?? []) {
-       await tx.run(
-         `INSERT INTO rules (rule_id, registry_id, [trigger], on_to_state, condition, action_type, action_params, ordering)
-          VALUES (?, ?, 'state_change', ?, ?, ?, ?, ?)`,
-         [
-           r.ruleId, config.registryId, r.onToState ?? null,
-           r.condition === undefined || r.condition === null ? null : JSON.stringify(r.condition),
-           r.actionType,
-           r.actionParams ? JSON.stringify(r.actionParams) : null,
-           r.ordering ?? 0,
-         ],
-       );
-     }
-   });
- 
-   await shared.run("DELETE FROM field_translations WHERE registry_id = ?", [config.registryId]);
-   for (const field of config.fields) {
-     const locales = new Set([...Object.keys(field.labels?.values ?? { fi: field.name }), ...Object.keys(field.helpText?.values ?? {})]);
-     for (const locale of locales) {
-       await shared.run("INSERT INTO field_translations (registry_id, field_name, locale, label, help_text) VALUES (?, ?, ?, ?, ?)", [
-         config.registryId, field.name, normalizeLocale(locale), resolveLocalizedText(field.labels, field.name, locale).value,
-         field.helpText ? resolveLocalizedText(field.helpText, "", locale).value : null,
-       ]);
-     }
-   }
- 
-   // 6) Record the applied version + the full config artifact (promotion audit
-   //    trail; the stored artifact is what config-promote reads back).
-   const version = config.version ?? 1;
-   await shared.run(
-     ds.upsert({
-       table: "config_versions",
-       insertColumns: ["registry_id", "version", "applied_at", "summary", "config_json"],
-       conflictColumns: ["registry_id", "version"],
-       updateColumns: ["applied_at", "summary", "config_json"],
-     }),
--    [config.registryId, version, now, `${config.fields.length} fields, ${config.states.length} states, ${(config.forms ?? []).length} forms, ${(config.rules ?? []).length} rules`, JSON.stringify(config)],
-+    [config.registryId, version, now, `${config.fields.length} fields, ${config.states.length} states, ${forms.length} forms, ${(config.rules ?? []).length} rules`, JSON.stringify(config)],
-   );
- 
-   return { version, addedColumns };
- }
- 
- async function tableExists(db: DbAdapter, name: string): Promise<boolean> {
-   const d = dialectFor(db.dialect);
-   return !!(await db.get(d.tableExists(), [name]));
- }
- 
- async function addMissingFieldColumns(regDb: DbAdapter, config: RegistryConfig): Promise<string[]> {
-   const d = dialectFor(regDb.dialect);
-   const existing = new Set((await regDb.all(d.columnsOf("cases"))).map((r) => String(r.name)));
-   const added: string[] = [];
-   for (const f of config.fields) {
-     if (existing.has(f.name)) continue;
-     // Forward-only ADD COLUMN. New columns must be nullable or defaulted since
-     // existing rows have no value — enforce that here (a real migration concern).
-     // Production evolution remains additive. A new required field cannot be
-     // safely invented for existing legal records; it must first be introduced
-     // nullable and populated through an explicit migration/workflow.
-     if (!f.nullable) throw new Error(`new field ${f.name} must be nullable`);
-     const nullClause = "";
-     await regDb.run(d.addColumn("cases", `${f.name} ${d.columnType(f.type)}${nullClause}`));
-     added.push(f.name);
-diff --git a/src/services/forms.ts b/src/services/forms.ts
-index 0d2497fb650702b8045e773f44fd16e42b04e2f8..8f9c2397031854f8259d6eb748a46a1091e1d093 100644
---- a/src/services/forms.ts
-+++ b/src/services/forms.ts
-@@ -15,74 +15,80 @@
-  * data, authorization, and blob storage. It keeps the domain modules pure.
-  */
- 
- import type { Platform, RegistryHandle } from "../api/platform.ts";
- import type { Principal } from "../api/authz.ts";
- import type { Db } from "../db/db.ts";
- import type { RegistryFieldDef } from "../config/registry-catalog.ts";
- import { getCaseByDiaryNumber } from "../core/queries.ts";
- import { workerCanAccessCategory, customerOwnsCase } from "../core/authorization.ts";
- import { createCase } from "../domain/cases.ts";
- import { appendOperation } from "../domain/operations.ts";
- import { validate, type ObjectSchema } from "../domain/json-schema.ts";
- import { blobKey } from "../blob/blob.ts";
- import { categoryBelongsToRegistry } from "../config/validation.ts";
- import { appendAudit, appendOutbox } from "../domain/audit.ts";
- 
- export interface ServiceResult {
-   readonly status: number;
-   readonly body: unknown;
- }
- 
- interface FormDef {
-   formId: string;
-   registryId: string;
-   kind: "case" | "operation";
--  audience: "worker" | "customer";
-+  audience: "worker" | "customer" | "both";
-   requiresApproval: boolean;
-   fieldSubset: string[] | null;
-   propertySchema: ObjectSchema | null;
-   allowAttachments: boolean;
-   operationType: string | null;
- }
- 
- async function loadForm(shared: Db, registryId: string, formId: string): Promise<FormDef | undefined> {
-   const row = await shared.get(
--    "SELECT * FROM form_definitions WHERE form_id = ? AND registry_id = ? AND active = 1",
-+    `SELECT f.*, c.requires_approval AS case_requires_approval, c.field_subset AS case_field_subset,
-+            o.property_schema AS operation_property_schema, o.allow_attachments AS operation_allow_attachments,
-+            o.operation_type AS operation_operation_type
-+       FROM form_definitions f
-+       LEFT JOIN case_form_definitions c ON c.form_id = f.form_id
-+       LEFT JOIN operation_form_definitions o ON o.form_id = f.form_id
-+      WHERE f.form_id = ? AND f.registry_id = ? AND f.active = 1`,
-     [formId, registryId],
-   );
-   if (!row) return undefined;
+ function toCaseView(row: Record<string, unknown>): CaseView {
    return {
-     formId: String(row.form_id),
-     registryId: String(row.registry_id),
-     kind: row.kind as "case" | "operation",
--    audience: row.audience as "worker" | "customer",
--    requiresApproval: Number(row.requires_approval) === 1,
--    fieldSubset: row.field_subset ? (JSON.parse(String(row.field_subset)) as string[]) : null,
--    propertySchema: row.property_schema ? (JSON.parse(String(row.property_schema)) as ObjectSchema) : null,
--    allowAttachments: Number(row.allow_attachments) === 1,
--    operationType: row.operation_type === null ? null : String(row.operation_type),
-+    audience: row.audience as "worker" | "customer" | "both",
-+    requiresApproval: Number(row.case_requires_approval) === 1,
-+    fieldSubset: row.case_field_subset ? (JSON.parse(String(row.case_field_subset)) as string[]) : null,
-+    propertySchema: row.operation_property_schema ? (JSON.parse(String(row.operation_property_schema)) as ObjectSchema) : null,
-+    allowAttachments: Number(row.operation_allow_attachments) === 1,
-+    operationType: row.operation_operation_type === null ? null : String(row.operation_operation_type),
+     caseKey: BigInt(row.case_key as number),
+     diaryNumber: String(row.diary_number),
+     category: String(row.category),
+     state: String(row.state),
+     isPublished: Number(row.is_published) === 1,
+     created: String(row.created),
+     modified: String(row.modified),
+     version: Number(row.version ?? 1),
    };
  }
  
- function submitterKind(p: Principal): "worker" | "customer" | "system" | "public" {
-   if (p.kind === "public") return "public";
-   if (p.kind === "token") return "system";
-   return p.actor.kind;
+ export async function getCaseByDiaryNumber(registryDb: Db, diaryNumber: string): Promise<CaseView | undefined> {
+   const row = await registryDb.get(
+     "SELECT case_key, diary_number, category, state, is_published, created, modified, version FROM cases WHERE diary_number = ?",
+     [diaryNumber],
+   );
+   return row ? toCaseView(row) : undefined;
  }
  
- export async function submitForm(
-   platform: Platform,
-   h: RegistryHandle,
-   formId: string,
-   principal: Principal,
-   body: Record<string, unknown>,
-   now: string,
- ): Promise<ServiceResult> {
-   const form = await loadForm(platform.shared, h.def.registryId, formId);
-   if (!form) return { status: 404, body: { error: "unknown form" } };
+ export async function getCaseHistory(registryDb: Db, caseKey: bigint): Promise<OperationView[]> {
+   const rows = await registryDb.all(
+-    `SELECT operation_id, created, direction, type, subtype, comment, actor_kind
++    `SELECT operation_id, created, direction, type, subtype, properties, comment, actor_kind
+        FROM operations WHERE case_key = ? ORDER BY operation_id`,
+     [caseKey],
+   );
+   return rows.map((r) => ({
+     operationId: Number(r.operation_id),
+     created: String(r.created),
+     direction: String(r.direction),
+     type: String(r.type),
+     subtype: r.subtype === null ? null : String(r.subtype),
++    properties: r.properties === null ? null : JSON.parse(String(r.properties)),
+     comment: r.comment === null ? null : String(r.comment),
+     actorKind: String(r.actor_kind),
+   }));
+ }
  
-   const who = submitterKind(principal);
-   if (who === "public") return { status: 403, body: { error: "authentication required" } };
-   // Audience gating: a customer form is for customers, a worker form for workers.
-   if (form.audience === "customer" && who !== "customer")
-     return { status: 403, body: { error: "customer form" } };
-diff --git a/test/admin.test.ts b/test/admin.test.ts
-index 6ac2c8009c2a768942bc2e079b325e27a8384b19..be554ead95bc55f114328c9f177421f9fb954100 100644
---- a/test/admin.test.ts
-+++ b/test/admin.test.ts
-@@ -1,29 +1,30 @@
- import { test } from "node:test";
- import assert from "node:assert/strict";
- import { buildSamplePlatform, fixedClock } from "../src/bootstrap.ts";
- import { dispatch } from "../src/api/server.ts";
-+import { exportRegistryConfig } from "../src/services/config-promote.ts";
+ /** Customer portal: this customer's cases (ownership-filtered) (§5.5, §6.2). */
+ export async function listCustomerCases(registryDb: Db, customerId: string): Promise<CaseView[]> {
+   const rows = await registryDb.all(
+     `SELECT c.case_key, c.diary_number, c.category, c.state, c.is_published, c.created, c.modified, c.version
+        FROM cases c
+        JOIN case_parties p ON p.case_key = c.case_key
+       WHERE p.customer_id = ?
+       ORDER BY c.created DESC`,
+     [customerId],
+   );
+   return rows.map(toCaseView);
+ }
  
- const NOW = "2026-08-11T09:00:00.000Z";
- const asWorker = (id: string) => `Bearer worker:${id}`;
+ /**
+  * Publishing portal: scan only the explicit public projection (§5.7).
+  * Matching is a normalized literal substring test over public case metadata,
+  * public field values, and explicitly published operation content.
+  */
+ export async function searchPublishedCases(registryDb: Db, options: PublishedSearchOptions = {}): Promise<PublishedCaseView[]> {
+   const escapedCategoryPrefix = options.categoryPrefix ? escapeLikePattern(options.categoryPrefix) : undefined;
+@@ -168,34 +170,35 @@ function searchableScalars(value: unknown): string[] {
  
- test("non-admin is refused on management endpoints", async () => {
-   const { platform: p } = await buildSamplePlatform(fixedClock(NOW));
-   const r = await dispatch(p, { method: "POST", url: "/api/registries/permit/fields".replace("registries", "admin/registries"), authorization: asWorker("w-anna"), body: { name: "x", type: "text", nullable: true } });
-   // path: /api/admin/registries/permit/fields
-   assert.equal(r.status, 403);
- });
+ function parseJson(value: unknown): unknown {
+   if (typeof value !== "string") return value;
+   try { return JSON.parse(value); } catch { return value; }
+ }
  
- test("admin adds a statutory field (config-driven schema migration) and it becomes usable", async () => {
-   const { platform: p, dbs } = await buildSamplePlatform(fixedClock(NOW));
+ export async function getPublishedCaseByDiaryNumber(registryDb: Db, diaryNumber: string): Promise<PublishedCaseRecord | undefined> {
+   const row = await registryDb.get(
+     `SELECT p.case_key, p.diary_number, p.category, p.state, p.fields_json, p.published_at
+        FROM published_cases p
+       WHERE p.diary_number = ?`,
+     [diaryNumber],
+   );
+   return row ? { caseKey: BigInt(row.case_key as number), ...toPublishedCaseView(row) } : undefined;
+ }
  
-   const add = await dispatch(p, {
-     method: "POST", url: "/api/admin/registries/permit/fields", authorization: asWorker("w-admin"),
-     body: {
-       name: "coordinate", type: "text", nullable: true,
-       writableOnCreate: true, writableOnUpdate: true, publicationEligible: false,
-       legalBasis: "statutory permit processing", purpose: "site location",
-       sensitivity: "normal", retentionPolicy: "permit-case-retention",
-     },
-   });
-   assert.equal(add.status, 201);
-   assert.deepEqual((add.body as { addedColumns: string[] }).addedColumns, ["coordinate"]);
-@@ -43,50 +44,54 @@ test("admin adds a statutory field (config-driven schema migration) and it becom
- test("admin adds a state + transition and a case can use it", async () => {
-   const { platform: p } = await buildSamplePlatform(fixedClock(NOW));
-   assert.equal((await dispatch(p, { method: "POST", url: "/api/admin/registries/permit/states", authorization: asWorker("w-admin"), body: { id: "appealed", name: "Appealed", isOpen: true } })).status, 201);
-   assert.equal((await dispatch(p, { method: "POST", url: "/api/admin/registries/permit/transitions", authorization: asWorker("w-admin"), body: { from: "decided", to: "appealed" } })).status, 201);
+ function toPublishedCaseView(row: Record<string, unknown>): PublishedCaseView {
+   return {
+     diaryNumber: String(row.diary_number), category: String(row.category), state: String(row.state),
+     fields: JSON.parse(String(row.fields_json)), publishedAt: String(row.published_at),
+   };
+ }
  
-   const diary = ((await dispatch(p, { method: "POST", url: "/api/registries/permit/cases", authorization: asWorker("w-admin"), body: { category: "105", initialState: "received", fields: { applicant_name: "A", permit_kind: "w", fee_paid: false } } })).body as { diaryNumber: string }).diaryNumber;
-   const url = `/api/registries/permit/cases/${encodeURIComponent(diary)}/transition`;
-   for (const to of ["in_preparation", "decided", "appealed"]) {
-     assert.equal((await dispatch(p, { method: "POST", url, authorization: asWorker("w-admin"), body: { toState: to } })).status, 200);
+ export async function getPublishedHistory(registryDb: Db, caseKey: bigint): Promise<OperationView[]> {
+   const rows = await registryDb.all(
+-    `SELECT operation_id, created, direction, type, subtype, comment, 'published' AS actor_kind
++    `SELECT operation_id, created, direction, type, subtype, properties, comment, 'published' AS actor_kind
+        FROM published_operations WHERE case_key = ? ORDER BY operation_id`,
+     [caseKey],
+   );
+   return rows.map((r) => ({
+     operationId: Number(r.operation_id), created: String(r.created), direction: String(r.direction), type: String(r.type),
+-    subtype: r.subtype === null ? null : String(r.subtype), comment: r.comment === null ? null : String(r.comment), actorKind: "published",
++    subtype: r.subtype === null ? null : String(r.subtype), properties: r.properties === null ? null : JSON.parse(String(r.properties)),
++    comment: r.comment === null ? null : String(r.comment), actorKind: "published",
+   }));
+ }
+diff --git a/src/domain/json-schema.ts b/src/domain/json-schema.ts
+index 11ce43bf988442dca5e69618cc1fc038b0c126f3..f05d85a6b4f3dc69fc32da4e549251975f2dc763 100644
+--- a/src/domain/json-schema.ts
++++ b/src/domain/json-schema.ts
+@@ -1,72 +1,96 @@
+ /**
+  * Minimal JSON-schema-subset validator (Architecture §5.4).
+  *
+  * Operation forms declare their payload as a JSON schema: each property's name,
+  * type, and whether it is mandatory. A full validator (e.g. Ajv) is the
+  * production choice; this dependency-free subset covers exactly what the forms
+  * platform needs (object with typed, required/optional properties) so the
+  * foundation validates untrusted form input without adding a dependency or a
+  * build step. The stored schema shape is forward-compatible with Ajv.
+  */
+ 
+ export interface PropertySchema {
+   readonly type: "string" | "number" | "integer" | "boolean";
+-  readonly nullable?: boolean;
++  readonly minimum?: number;
++  readonly maximum?: number;
++  readonly pattern?: string;
++  /** Message shown when this property's value does not satisfy its constraints. */
++  readonly errorMessage?: string;
+ }
+ 
+ export interface ObjectSchema {
+   readonly type: "object";
+   readonly properties: Readonly<Record<string, PropertySchema>>;
+   readonly required?: readonly string[];
+   /** Reject properties not named in `properties`. Default true. */
+   readonly additionalProperties?: boolean;
+ }
+ 
+ export interface ValidationResult {
+   readonly valid: boolean;
+   readonly errors: readonly string[];
+ }
+ 
+ export function validate(schema: ObjectSchema, value: unknown): ValidationResult {
+   const errors: string[] = [];
+   if (value === null || typeof value !== "object" || Array.isArray(value)) {
+     return { valid: false, errors: ["payload must be an object"] };
    }
- });
+   const obj = value as Record<string, unknown>;
+   const required = new Set(schema.required ?? []);
  
- test("admin adds a worker operation form and it is immediately usable with audience gating", async () => {
-   const { platform: p, db } = await buildSamplePlatform(fixedClock(NOW));
-   const added = await dispatch(p, {
-     method: "POST", url: "/api/admin/registries/permit/forms", authorization: asWorker("w-admin"),
-     body: {
-       formId: "record-inspection", kind: "operation", audience: "worker", title: "Record inspection",
-       operationType: "inspection", allowAttachments: false,
-       propertySchema: {
-         type: "object", properties: { outcome: { type: "string" } }, required: ["outcome"], additionalProperties: false,
-       },
-     },
-   });
-   assert.equal(added.status, 201);
-+  const metadata = await dispatch(p, { method: "GET", url: "/api/registries/permit/meta", authorization: asWorker("w-admin"), body: undefined });
-+  assert.ok((metadata.body as { operationForms: Array<{ formId: string }> }).operationForms.some((form) => form.formId === "record-inspection"));
-+  const persisted = await exportRegistryConfig(p.shared, "permit");
-+  assert.ok(persisted?.operationForms?.some((form) => form.formId === "record-inspection"));
+   if (schema.additionalProperties !== true) {
+     for (const key of Object.keys(obj)) {
+       if (!(key in schema.properties)) errors.push(`unexpected property "${key}"`);
+     }
+   }
  
-   const created = await dispatch(p, {
-     method: "POST", url: "/api/registries/permit/cases", authorization: "Bearer customer:c-1",
-     body: { category: "105.04.03", fields: { applicant_name: "A", permit_kind: "water", fee_paid: false } },
-   });
-   assert.equal(created.status, 201);
-   const diary = (created.body as { diaryNumber: string }).diaryNumber;
-   const submitUrl = "/api/registries/permit/forms/record-inspection/submit";
+   for (const [name, prop] of Object.entries(schema.properties)) {
+     const present = name in obj;
+     const v = obj[name];
+-    if (!present || v === undefined) {
++    if (!present || v === undefined || (required.has(name) && (v === null || v === ""))) {
+       if (required.has(name)) errors.push(`missing required property "${name}"`);
+       continue;
+     }
+     if (v === null) {
+-      if (!prop.nullable) errors.push(`property "${name}" may not be null`);
++      errors.push(`property "${name}" may not be null`);
+       continue;
+     }
+-    if (!typeMatches(prop.type, v)) errors.push(`property "${name}" must be ${prop.type}`);
++    if (!typeMatches(prop.type, v)) {
++      errors.push(prop.errorMessage || `property "${name}" must be ${prop.type}`);
++      continue;
++    }
++    const constraintError = validateConstraints(prop, v);
++    if (constraintError) errors.push(prop.errorMessage || `property "${name}" ${constraintError}`);
+   }
  
-   // The configured worker audience excludes customers.
-   assert.equal((await dispatch(p, {
-     method: "POST", url: submitUrl, authorization: "Bearer customer:c-1",
-     body: { diaryNumber: diary, properties: { outcome: "passed" } },
-   })).status, 403);
+   return { valid: errors.length === 0, errors };
+ }
  
-   // Attachment configuration is enforced before an operation is persisted.
-   assert.equal((await dispatch(p, {
-     method: "POST", url: submitUrl, authorization: asWorker("w-anna"),
-     body: {
-       diaryNumber: diary, properties: { outcome: "passed" },
-       attachments: [{ filename: "inspection.txt", contentType: "text/plain", base64: "cGFzc2Vk" }],
-     },
-   })).status, 400);
-   assert.equal(Number((await db.get("SELECT COUNT(*) AS n FROM operations WHERE type = 'inspection'"))?.n), 0);
- 
-diff --git a/test/config-promote.test.ts b/test/config-promote.test.ts
-index 35ab42fb3468ef1b0c98300cad02a65f2d5ab16c..1df6017f236b8982a32220d43a029b077b671d24 100644
---- a/test/config-promote.test.ts
-+++ b/test/config-promote.test.ts
-@@ -57,28 +57,28 @@ test("promoting a registry config to a fresh environment reproduces its behavior
- 
- test("reapplying config preserves translations while replacing form definitions", async () => {
-   const { platform } = await buildSamplePlatform(fixedClock(NOW));
-   const form = await platform.shared.get(
-     "SELECT form_id FROM form_definitions WHERE registry_id = ? LIMIT 1",
-     [PERMIT_CONFIG.registryId],
-   );
-   assert.ok(form);
-   await platform.shared.run(
-     "INSERT INTO form_translations (form_id, locale, title) VALUES (?, ?, ?)",
-     [String(form.form_id), "sv", "Översättning"],
-   );
- 
-   const registryDb = platform.registry(PERMIT_CONFIG.registryId)?.db;
-   assert.ok(registryDb);
-   await applyRegistryConfig(platform.shared, registryDb, PERMIT_CONFIG, NOW);
- 
-   const preserved = await platform.shared.get(
-     "SELECT locale, title FROM form_translations WHERE form_id = ? AND locale = ?",
-     [String(form.form_id), "sv"],
-   );
-   assert.equal(preserved?.locale, "sv");
-   assert.equal(preserved?.title, "Översättning");
-   assert.equal(
-     Number((await platform.shared.get("SELECT COUNT(*) AS n FROM form_definitions WHERE registry_id = ?", [PERMIT_CONFIG.registryId]))?.n),
--    PERMIT_CONFIG.forms?.length ?? 0,
-+    (PERMIT_CONFIG.caseForms?.length ?? 0) + (PERMIT_CONFIG.operationForms?.length ?? 0),
-   );
- });
++function validateConstraints(prop: PropertySchema, value: unknown): string | undefined {
++  if ((prop.type === "number" || prop.type === "integer") && typeof value === "number") {
++    if (prop.minimum !== undefined && value < prop.minimum) return `must be at least ${prop.minimum}`;
++    if (prop.maximum !== undefined && value > prop.maximum) return `must be at most ${prop.maximum}`;
++  }
++  if (prop.type === "string" && prop.pattern !== undefined && typeof value === "string") {
++    try {
++      if (!new RegExp(prop.pattern).test(value)) return `must match pattern ${prop.pattern}`;
++    } catch {
++      return "has an invalid configured pattern";
++    }
++  }
++  return undefined;
++}
++
+ function typeMatches(type: PropertySchema["type"], v: unknown): boolean {
+   switch (type) {
+     case "string":
+       return typeof v === "string";
+     case "number":
+       return typeof v === "number" && Number.isFinite(v);
+     case "integer":
+       return typeof v === "number" && Number.isInteger(v);
+     case "boolean":
+       return typeof v === "boolean";
+   }
+ }
 diff --git a/test/forms.test.ts b/test/forms.test.ts
-index 189f16139f28e1058b79e05f4a34869025c0d14e..f11fd73382a88a36e23a2efe749b8341edafae29 100644
+index acad5ec8873b2665427cf4c9ba43d3d70e1f96f7..0988caf6102227f5e8b2e09e73e4dc6f4c7d4dd8 100644
 --- a/test/forms.test.ts
 +++ b/test/forms.test.ts
-@@ -1,35 +1,65 @@
+@@ -1,35 +1,50 @@
  import { test } from "node:test";
  import assert from "node:assert/strict";
  import { buildSamplePlatform, fixedClock } from "../src/bootstrap.ts";
  import { dispatch } from "../src/api/server.ts";
  import { getCaseByDiaryNumber, getCaseHistory } from "../src/core/queries.ts";
++import { validate } from "../src/domain/json-schema.ts";
  
  const NOW = "2026-08-11T09:00:00.000Z";
  const asCustomer = (id: string) => `Bearer customer:${id}`;
  const asWorker = (id: string) => `Bearer worker:${id}`;
  
-+test("forms have persistent common and type-specific models", async () => {
-+  const { platform } = await buildSamplePlatform(fixedClock(NOW));
-+  const base = await platform.shared.get("SELECT title, description FROM form_definitions WHERE form_id = ?", ["update-site-address"]);
-+  assert.equal(base?.title, "Update site address");
-+  assert.equal(base?.description, "Enter the new address for the permit site.");
-+  assert.equal(Number((await platform.shared.get("SELECT requires_approval FROM case_form_definitions WHERE form_id = ?", ["update-site-address"]))?.requires_approval), 1);
-+  assert.equal(Number((await platform.shared.get("SELECT allow_attachments FROM operation_form_definitions WHERE form_id = ?", ["submit-document"]))?.allow_attachments), 1);
-+
-+  const response = await dispatch(platform, { method: "GET", url: "/api/registries/permit/meta", authorization: asWorker("w-admin"), body: undefined });
-+  const metadata = response.body as { caseForms: Array<{ description: string }>; operationForms: Array<{ operationType: string }> };
-+  assert.equal(metadata.caseForms[0]?.description, "Anna lupakohteen uusi osoite.");
-+  assert.equal(metadata.operationForms[0]?.operationType, "document");
++test("operation property validation treats mandatory as non-empty and supports constraints", () => {
++  const schema = {
++    type: "object" as const,
++    properties: {
++      reference: { type: "string" as const, pattern: "^[A-Z]{2}$", errorMessage: "Use two capital letters" },
++      amount: { type: "number" as const, minimum: 1, maximum: 10 },
++    },
++    required: ["reference"],
++  };
++  assert.deepEqual(validate(schema, { reference: "" }).errors, ['missing required property "reference"']);
++  assert.deepEqual(validate(schema, { reference: "ab", amount: 11 }).errors, ["Use two capital letters", 'property "amount" must be at most 10']);
++  assert.equal(validate(schema, { reference: "AB", amount: 5 }).valid, true);
 +});
 +
-+test("a form with both audience is visible to customers and workers", async () => {
-+  const { platform } = await buildSamplePlatform(fixedClock(NOW));
-+  const created = await dispatch(platform, {
-+    method: "POST", url: "/api/admin/registries/permit/operation-forms", authorization: asWorker("w-admin"),
-+    body: { formId: "shared-note", title: "Shared note", description: "Add a note.", audience: "both", operationType: "note" },
-+  });
-+  assert.equal(created.status, 201);
-+  assert.equal((await platform.shared.get("SELECT audience FROM form_definitions WHERE form_id = ?", ["shared-note"]))?.audience, "both");
-+
-+  for (const authorization of [asCustomer("c-1"), asWorker("w-anna")]) {
-+    const response = await dispatch(platform, { method: "GET", url: "/api/registries/permit/meta", authorization, body: undefined });
-+    const metadata = response.body as { operationForms: Array<{ formId: string }> };
-+    assert.ok(metadata.operationForms.some((form) => form.formId === "shared-note"));
-+  }
-+});
-+
- async function seedCase(p: Awaited<ReturnType<typeof buildSamplePlatform>>["platform"], customer = "c-1") {
-   const r = await dispatch(p, {
-     method: "POST", url: "/api/registries/permit/cases", authorization: asCustomer(customer),
-     body: { category: "105.04.03", initialState: "received", fields: { applicant_name: "A", permit_kind: "water", fee_paid: false } },
-   });
-   return (r.body as { diaryNumber: string }).diaryNumber;
- }
+ test("forms have persistent common and type-specific models", async () => {
+   const { platform } = await buildSamplePlatform(fixedClock(NOW));
+   const base = await platform.shared.get("SELECT title, description FROM form_definitions WHERE form_id = ?", ["update-site-address"]);
+   assert.equal(base?.title, "Update site address");
+   assert.equal(base?.description, "Enter the new address for the permit site.");
+   assert.equal(Number((await platform.shared.get("SELECT requires_approval FROM case_form_definitions WHERE form_id = ?", ["update-site-address"]))?.requires_approval), 1);
+   assert.equal(Number((await platform.shared.get("SELECT allow_attachments FROM operation_form_definitions WHERE form_id = ?", ["submit-document"]))?.allow_attachments), 1);
  
- test("customer case form requiring approval is staged, not applied, until a worker approves", async () => {
+   const response = await dispatch(platform, { method: "GET", url: "/api/registries/permit/meta", authorization: asWorker("w-admin"), body: undefined });
+   const metadata = response.body as { caseForms: Array<{ description: string }>; operationForms: Array<{ operationType: string }> };
+   assert.equal(metadata.caseForms[0]?.description, "Anna lupakohteen uusi osoite.");
+   assert.equal(metadata.operationForms[0]?.operationType, "document");
+ });
+ 
+ test("a form with both audience is visible to customers and workers", async () => {
+   const { platform } = await buildSamplePlatform(fixedClock(NOW));
+   const created = await dispatch(platform, {
+     method: "POST", url: "/api/admin/registries/permit/operation-forms", authorization: asWorker("w-admin"),
+     body: { formId: "shared-note", title: "Shared note", description: "Add a note.", audience: "both", operationType: "note" },
+   });
+   assert.equal(created.status, 201);
+   assert.equal((await platform.shared.get("SELECT audience FROM form_definitions WHERE form_id = ?", ["shared-note"]))?.audience, "both");
+ 
+   for (const authorization of [asCustomer("c-1"), asWorker("w-anna")]) {
+     const response = await dispatch(platform, { method: "GET", url: "/api/registries/permit/meta", authorization, body: undefined });
+@@ -124,50 +139,56 @@ test("rejecting a pending case update preserves the case and cannot be decided t
+       method: "POST", url: `/api/registries/permit/pending/1/${decision}`, authorization: asWorker("w-anna"), body: {},
+     });
+     assert.equal(repeated.status, 409);
+   }
+   assert.equal((await db.get("SELECT site_address FROM cases WHERE diary_number = ?", [diary]))?.site_address, null);
+ });
+ 
+ test("operation form validates payload against its JSON schema and stores attachments", async () => {
    const { platform: p, db } = await buildSamplePlatform(fixedClock(NOW));
    const diary = await seedCase(p);
  
-   // Customer submits the approval-required address change.
-   const submit = await dispatch(p, {
-     method: "POST", url: "/api/registries/permit/forms/update-site-address/submit", authorization: asCustomer("c-1"),
-     body: { diaryNumber: diary, fields: { site_address: "New Road 9" } },
+   // Missing required documentTitle -> 400.
+   const bad = await dispatch(p, {
+     method: "POST", url: "/api/registries/permit/forms/submit-document/submit", authorization: asCustomer("c-1"),
+     body: { diaryNumber: diary, properties: { pages: 3 } },
    });
-   assert.equal(submit.status, 202);
+   assert.equal(bad.status, 400);
  
-   // Not yet applied to the case.
-   const c1 = await db.get("SELECT site_address FROM cases WHERE diary_number = ?", [diary]);
-   assert.equal(c1?.site_address, null);
+   // Valid payload + an attachment.
+   const ok = await dispatch(p, {
+     method: "POST", url: "/api/registries/permit/forms/submit-document/submit", authorization: asCustomer("c-1"),
+     body: { diaryNumber: diary, properties: { documentTitle: "Deed", pages: 2 }, attachments: [{ filename: "deed.txt", contentType: "text/plain", base64: Buffer.from("hello").toString("base64") }] },
+   });
+   assert.equal(ok.status, 201);
  
-   // Worker approves the single pending update (pending_id = 1).
-   const approve = await dispatch(p, {
++  const detail = await dispatch(p, {
++    method: "GET", url: `/api/registries/permit/cases/${encodeURIComponent(diary)}`, authorization: asCustomer("c-1"), body: undefined,
++  });
++  const history = (detail.body as { history: Array<{ type: string; properties: unknown }> }).history;
++  assert.deepEqual(history.find((operation) => operation.type === "document")?.properties, { documentTitle: "Deed", pages: 2 });
++
+   const cse = (await getCaseByDiaryNumber(db, diary))!;
+   const att = await db.get("SELECT filename, size, blob_key FROM attachments WHERE case_key = ?", [cse.caseKey]);
+   assert.equal(att?.filename, "deed.txt");
+   assert.equal(Number(att?.size), 5);
+   // The blob bytes are retrievable from the store by key.
+   assert.equal(Buffer.from(p.blobs.get(String(att?.blob_key))!).toString("utf8"), "hello");
+ });
+ 
+ test("wrong audience is rejected (worker submitting a customer form)", async () => {
+   const { platform: p } = await buildSamplePlatform(fixedClock(NOW));
+   const diary = await seedCase(p);
+   const r = await dispatch(p, { method: "POST", url: "/api/registries/permit/forms/update-site-address/submit", authorization: asWorker("w-anna"), body: { diaryNumber: diary, fields: { site_address: "Y" } } });
+   assert.equal(r.status, 403);
+ });
+ 
+ test("a customer cannot submit an operation form against another customer's case", async () => {
+   const { platform: p, db } = await buildSamplePlatform(fixedClock(NOW));
+   const diary = await seedCase(p, "c-1");
+   const before = Number((await db.get("SELECT COUNT(*) AS n FROM operations"))?.n);
+ 
+   const response = await dispatch(p, {
+     method: "POST", url: "/api/registries/permit/forms/submit-document/submit", authorization: asCustomer("c-2"),
+     body: { diaryNumber: diary, properties: { documentTitle: "Not mine" } },
+   });
+ 
 diff --git a/test/i18n.test.ts b/test/i18n.test.ts
-index 5b32fa835a356f7644df1addb73cc14450b25aca..c0719441970e6df1974e4c776aa77156e0f47efe 100644
+index c0719441970e6df1974e4c776aa77156e0f47efe..dcd97287fa8bea92b045800c72a298a57137420b 100644
 --- a/test/i18n.test.ts
 +++ b/test/i18n.test.ts
-@@ -34,30 +34,43 @@ test("all static document and programmatic translation keys exist in Finnish", (
-   ].map((match) => match[1]).filter((key): key is string => key !== undefined);
-   const missing = [...new Set(keys)].filter((key) => !(key in fi.messages));
-   assert.deepEqual(missing, []);
-   assert.equal(Object.values(fi.sourceKeys).every((key) => key in fi.messages), true);
- });
- 
- test("dynamic DOM children are not implicitly translated", () => {
-   const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
-   assert.match(app, /document\.createTextNode\(String\(kid\)\)/);
-   assert.doesNotMatch(app, /document\.createTextNode\(ts\(String\(kid\)\)\)/);
-   assert.match(app, /t\("common\.open"\)/);
- });
- 
+@@ -47,30 +47,52 @@ test("dynamic DOM children are not implicitly translated", () => {
  test("programmatically rendered portal chrome uses explicit translations", () => {
    const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
    for (const key of [
@@ -2077,17 +1012,39 @@ index 5b32fa835a356f7644df1addb73cc14450b25aca..c0719441970e6df1974e4c776aa77156
    }
  });
  
-+test("cancelling one self-contained editor only restores its own list", () => {
+ test("cancelling one self-contained editor only restores its own list", () => {
+   const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+   assert.match(app, /const showList = \(\) => card\.replaceWith\(renderCard\(\)\)/);
+   assert.doesNotMatch(app, /const showList = \(\) => reManage\(\)/);
+ });
+ 
+ test("portal form chooser consumes split forms and includes the both audience", () => {
+   const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+   assert.match(app, /\.\.\.\(m\.operationForms \|\| \[\]\)\.map\(\(form\) => \(\{ \.\.\.form, kind: "operation" \}\)\)/);
+   assert.match(app, /form\.audience === "worker" \|\| form\.audience === "both"/);
+   assert.match(app, /form\.audience === "customer" \|\| form\.audience === "both"/);
+ });
+ 
++test("operation schemas have a structured management editor and structured detail values", () => {
 +  const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
-+  assert.match(app, /const showList = \(\) => card\.replaceWith\(renderCard\(\)\)/);
-+  assert.doesNotMatch(app, /const showList = \(\) => reManage\(\)/);
++  assert.match(app, /function schemaPropertyRow\(/);
++  assert.match(app, /"data-schema-required": true/);
++  assert.doesNotMatch(app, /data-schema-nullable/);
++  assert.match(app, /"data-schema-minimum": true/);
++  assert.match(app, /"data-schema-pattern": true/);
++  assert.match(app, /class: "schema-primary"/);
++  assert.match(app, /class: "schema-validation"/);
++  assert.match(app, /class: "schema-actions"/);
++  assert.match(app, /row\.querySelector\("\.schema-message"\)\.hidden = !supportsNumberValidation && !supportsStringValidation/);
++  assert.match(app, /supportsNumberValidation \? row\.querySelector\("\[data-schema-minimum\]"\)\.value : ""/);
++  assert.match(app, /body\.propertySchema = \{ type: "object", properties, required, additionalProperties: false \}/);
++  assert.match(app, /class: "operation-properties"/);
 +});
 +
-+test("portal form chooser consumes split forms and includes the both audience", () => {
-+  const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
-+  assert.match(app, /\.\.\.\(m\.operationForms \|\| \[\]\)\.map\(\(form\) => \(\{ \.\.\.form, kind: "operation" \}\)\)/);
-+  assert.match(app, /form\.audience === "worker" \|\| form\.audience === "both"/);
-+  assert.match(app, /form\.audience === "customer" \|\| form\.audience === "both"/);
++test("dynamic schema validation fields and error toasts are visibly positioned", () => {
++  const styles = readFileSync(new URL("../public/styles.css", import.meta.url), "utf8");
++  assert.match(styles, /\.schema-property \[hidden\] \{ display: none; \}/);
++  assert.match(styles, /\.toast\.err \{ left: 50%; right: auto; text-align: center; transform: translateX\(-50%\);/);
 +});
 +
  test("locale storage failures are isolated from application startup", () => {
