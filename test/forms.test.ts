@@ -23,6 +23,39 @@ test("operation property validation treats mandatory as non-empty and supports c
   assert.equal(validate(schema, { reference: "AB", amount: 5 }).valid, true);
 });
 
+test("operation property validation rejects unsafe regular expressions before evaluation", () => {
+  const schema = {
+    type: "object" as const,
+    properties: { reference: { type: "string" as const, pattern: "^(a+)+$" } },
+  };
+  assert.deepEqual(validate(schema, { reference: `${"a".repeat(30)}!` }).errors, [
+    'property "reference" has an invalid or unsafe configured pattern',
+  ]);
+});
+
+test("editing a localized form preserves its canonical and translated text", async () => {
+  const { platform: p } = await buildSamplePlatform(fixedClock(NOW));
+  const before = (await dispatch(p, {
+    method: "GET", url: "/api/registries/permit/meta?lang=fi", authorization: asWorker("w-admin"), body: undefined,
+  })).body as { caseForms: Array<{ formId: string; title: string; description: string }> };
+  const localized = before.caseForms.find((form) => form.formId === "update-site-address")!;
+
+  const edited = await dispatch(p, {
+    method: "POST", url: "/api/admin/registries/permit/case-forms", authorization: asWorker("w-admin"),
+    body: { ...localized, audience: "both", requiresApproval: false, fieldSubset: ["site_address"] },
+  });
+  assert.equal(edited.status, 201);
+
+  const artifact = await (await import("../src/services/config-promote.ts")).exportRegistryConfig(p.shared, "permit");
+  const form = artifact?.caseForms?.find((candidate) => candidate.formId === "update-site-address");
+  assert.equal(form?.title, "Update site address");
+  assert.equal(form?.description, "Enter the new address for the permit site.");
+  assert.equal(form?.titles?.values.fi, localized.title);
+  assert.equal(form?.descriptions?.values.fi, localized.description);
+  assert.equal(form?.audience, "both");
+  assert.equal(form?.requiresApproval, false);
+});
+
 test("forms have persistent common and type-specific models", async () => {
   const { platform } = await buildSamplePlatform(fixedClock(NOW));
   const base = await platform.shared.get("SELECT title, description FROM form_definitions WHERE form_id = ?", ["update-site-address"]);

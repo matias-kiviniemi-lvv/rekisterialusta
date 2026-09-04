@@ -31,6 +31,42 @@ export interface ValidationResult {
   readonly errors: readonly string[];
 }
 
+const MAX_PATTERN_LENGTH = 256;
+const MAX_PATTERN_VALUE_LENGTH = 1024;
+
+/**
+ * Conservative, dependency-free policy for regular expressions evaluated on
+ * request data. It deliberately excludes constructs whose runtime can grow
+ * super-linearly in JavaScript's backtracking regexp engine.
+ */
+export function isSafePattern(pattern: string): boolean {
+  if (pattern.length === 0 || pattern.length > MAX_PATTERN_LENGTH || /\\[1-9]/.test(pattern)) return false;
+  let escaped = false;
+  let inClass = false;
+  let unboundedQuantifiers = 0;
+  const groups: Array<{ containsQuantifier: boolean; containsAlternation: boolean }> = [];
+  for (let i = 0; i < pattern.length; i++) {
+    const char = pattern[i]!;
+    if (escaped) { escaped = false; continue; }
+    if (char === "\\") { escaped = true; continue; }
+    if (char === "[") { inClass = true; continue; }
+    if (char === "]" && inClass) { inClass = false; continue; }
+    if (inClass) continue;
+    if (char === "(") groups.push({ containsQuantifier: false, containsAlternation: false });
+    else if (char === "|") { if (groups.length) groups[groups.length - 1]!.containsAlternation = true; }
+    else if (char === "*" || char === "+") {
+      unboundedQuantifiers++;
+      for (const group of groups) group.containsQuantifier = true;
+    } else if (char === ")") {
+      const group = groups.pop();
+      const next = pattern[i + 1];
+      if (group && (next === "*" || next === "+" || next === "{") && (group.containsQuantifier || group.containsAlternation)) return false;
+    }
+  }
+  if (escaped || inClass || groups.length || unboundedQuantifiers > 1) return false;
+  try { new RegExp(pattern); return true; } catch { return false; }
+}
+
 export function validate(schema: ObjectSchema, value: unknown): ValidationResult {
   const errors: string[] = [];
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -73,11 +109,9 @@ function validateConstraints(prop: PropertySchema, value: unknown): string | und
     if (prop.maximum !== undefined && value > prop.maximum) return `must be at most ${prop.maximum}`;
   }
   if (prop.type === "string" && prop.pattern !== undefined && typeof value === "string") {
-    try {
-      if (!new RegExp(prop.pattern).test(value)) return `must match pattern ${prop.pattern}`;
-    } catch {
-      return "has an invalid configured pattern";
-    }
+    if (!isSafePattern(prop.pattern)) return "has an invalid or unsafe configured pattern";
+    if (value.length > MAX_PATTERN_VALUE_LENGTH) return `must be at most ${MAX_PATTERN_VALUE_LENGTH} characters when pattern validation is configured`;
+    if (!new RegExp(prop.pattern).test(value)) return `must match pattern ${prop.pattern}`;
   }
   return undefined;
 }

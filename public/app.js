@@ -522,9 +522,10 @@ function schemaBuilder(schema) {
   const properties = Object.entries(schema?.properties || {});
   const required = new Set(schema?.required || []);
   const rows = h("div", { class: "schema-properties" }, ...properties.map(([name, spec]) => schemaPropertyRow(name, spec, required.has(name))));
-  return h("div", { class: "field schema-builder" },
+  const builder = h("div", { class: "field schema-builder", "data-schema-configured": schema != null ? "true" : "false" },
     h("label", null, t("management.properties")), rows,
-    h("button", { class: "btn sm ghost", type: "button", onclick: () => rows.append(schemaPropertyRow()) }, t("management.addProperty")));
+    h("button", { class: "btn sm ghost", type: "button", onclick: () => { builder.dataset.schemaConfigured = "true"; rows.append(schemaPropertyRow()); } }, t("management.addProperty")));
+  return builder;
 }
 
 function formCreateCard(m, kind, onCancel, existing = null) {
@@ -584,7 +585,8 @@ async function submitForm(kind, editor, editing = false) {
       properties[name] = spec;
       if (row.querySelector("[data-schema-required]").checked) required.push(name);
     }
-    body.propertySchema = { type: "object", properties, required, additionalProperties: false };
+    const schemaConfigured = editor.querySelector(".schema-builder")?.dataset.schemaConfigured === "true";
+    if (schemaConfigured || Object.keys(properties).length) body.propertySchema = { type: "object", properties, required, additionalProperties: false };
   }
   const r = await api("POST", `/api/admin/registries/${state.registry}/${kind}-forms`, body);
   if (ok(r, `${editing ? "Form saved" : "Form created"} → config v${r.data.version}`)) { await refreshMeta(); reManage(); }
@@ -810,7 +812,7 @@ function operationFormBlock(f, c, onCancel) {
   if (f.description) box.append(h("p", { class: "hint" }, f.description));
   for (const [name, spec] of props) {
     const req = (schema.required || []).includes(name);
-    const attrs = { id: "op_" + name, required: req, min: spec.minimum, max: spec.maximum, pattern: spec.pattern, title: spec.errorMessage };
+    const attrs = { id: "op_" + name, required: req, min: spec.minimum, max: spec.maximum, title: spec.errorMessage };
     const input = spec.type === "boolean" ? h("select", attrs, h("option", { value: "" }, "—"), h("option", { value: "false" }, "false"), h("option", { value: "true" }, "true"))
       : h("input", { ...attrs, type: spec.type === "integer" || spec.type === "number" ? "number" : "text", step: spec.type === "number" ? "any" : spec.type === "integer" ? "1" : null });
     box.append(h("div", { class: "field" }, h("label", null, name, req ? h("span", { class: "req" }, ` · ${t("form.required")}`) : h("span", { class: "optional" }, ` · ${t("form.optional")}`)), input));
@@ -826,7 +828,14 @@ function operationFormBlock(f, c, onCancel) {
     }
     const missing = props.find(([name]) => (schema.required || []).includes(name) && !$("#op_" + name)?.value);
     if (missing) { toast(t("operation.requiredProperty", { name: missing[0] }), "err"); $("#op_" + missing[0]).focus(); return; }
-    const invalid = props.find(([name]) => $("#op_" + name)?.value && !$("#op_" + name).checkValidity());
+    const invalid = props.find(([name, spec]) => {
+      const input = $("#op_" + name);
+      if (!input?.value || !input.checkValidity()) return !!input?.value && !input.checkValidity();
+      if (spec.type === "string" && spec.pattern) {
+        try { return !new RegExp(spec.pattern).test(input.value); } catch { return true; }
+      }
+      return false;
+    });
     if (invalid) { toast(invalid[1].errorMessage || t("operation.invalidProperty", { name: invalid[0] }), "err"); $("#op_" + invalid[0]).focus(); return; }
     const body = { diaryNumber: c.diaryNumber, properties };
     if (f.allowAttachments && $("#op_att_name") && $("#op_att_name").value) {
