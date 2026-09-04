@@ -87,19 +87,36 @@ export async function addForm(platform: Platform, registryId: string, form: Form
 }
 
 export async function addCaseForm(platform: Platform, registryId: string, form: CaseFormConfig, now: string) {
-  return mutateRegistryConfig(platform, registryId, (cfg) => ({
-    ...cfg,
-    caseForms: [...(cfg.caseForms ?? []).filter((f) => f.formId !== form.formId), form],
-    operationForms: (cfg.operationForms ?? []).filter((f) => f.formId !== form.formId),
-  }), now);
+  return mutateRegistryConfig(platform, registryId, (cfg) => {
+    const existing = (cfg.caseForms ?? []).find((candidate) => candidate.formId === form.formId);
+    const merged = preserveFormTranslations(existing, form);
+    return {
+      ...cfg,
+      caseForms: [...(cfg.caseForms ?? []).filter((f) => f.formId !== form.formId), merged],
+      operationForms: (cfg.operationForms ?? []).filter((f) => f.formId !== form.formId),
+    };
+  }, now);
 }
 
 export async function addOperationForm(platform: Platform, registryId: string, form: OperationFormConfig, now: string) {
-  return mutateRegistryConfig(platform, registryId, (cfg) => ({
-    ...cfg,
-    caseForms: (cfg.caseForms ?? []).filter((f) => f.formId !== form.formId),
-    operationForms: [...(cfg.operationForms ?? []).filter((f) => f.formId !== form.formId), form],
-  }), now);
+  return mutateRegistryConfig(platform, registryId, (cfg) => {
+    const existing = (cfg.operationForms ?? []).find((candidate) => candidate.formId === form.formId);
+    const merged = preserveFormTranslations(existing, form);
+    return {
+      ...cfg,
+      caseForms: (cfg.caseForms ?? []).filter((f) => f.formId !== form.formId),
+      operationForms: [...(cfg.operationForms ?? []).filter((f) => f.formId !== form.formId), merged],
+    };
+  }, now);
+}
+
+function preserveFormTranslations<T extends CaseFormConfig | OperationFormConfig>(existing: T | undefined, replacement: T): T {
+  if (!existing) return replacement;
+  return {
+    ...replacement,
+    ...(existing.titles ? { title: existing.title, titles: existing.titles } : {}),
+    ...(existing.descriptions ? { description: existing.description, descriptions: existing.descriptions } : {}),
+  };
 }
 
 export async function addRule(platform: Platform, registryId: string, rule: RuleConfig, now: string) {

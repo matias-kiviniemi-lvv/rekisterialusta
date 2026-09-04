@@ -3,6 +3,7 @@ import type { RegistryFieldDef } from "./registry-catalog.ts";
 import type { Condition } from "../domain/rule-types.ts";
 import { isWithin, normalizePath } from "../domain/categories.ts";
 import { validateLocalizedText } from "./localization.ts";
+import { isSafePattern } from "../domain/json-schema.ts";
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -110,6 +111,13 @@ export function validateRegistryConfig(config: RegistryConfig): void {
     if (!new Set(["worker", "customer", "both"]).has(form.audience)) throw new Error(`form ${form.formId} has invalid audience`);
     if (form.titles) validateLocalizedText(form.titles, `form ${form.formId} title`);
     if (form.descriptions) validateLocalizedText(form.descriptions, `form ${form.formId} description`);
+    if ("propertySchema" in form && form.propertySchema) {
+      for (const [name, property] of Object.entries(form.propertySchema.properties)) {
+        if (property.pattern !== undefined && !isSafePattern(property.pattern)) {
+          throw new Error(`form ${form.formId} property ${name} has an invalid or unsafe pattern`);
+        }
+      }
+    }
     if ("fieldSubset" in form && form.fieldSubset) {
       for (const name of form.fieldSubset) if (!names.has(name)) throw new Error(`form ${form.formId} references unknown field ${name}`);
     }
